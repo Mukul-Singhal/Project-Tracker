@@ -765,10 +765,9 @@ $('submitBtn').addEventListener('click', () => {
 $('backBtn').addEventListener('click', () => { if (confirm('Go back? Unsaved changes will be lost.')) history.back(); });
 
 // ─── PDF EXPORT ──────────────────────────────────────────────────────────────
-$('exportBtn').addEventListener('click', () => exportPDF('a3'));
-$('pdfA3Btn').addEventListener('click', () => exportPDF('a3'));
-$('pdfA1Btn').addEventListener('click', () => exportPDF('a1'));
-async function exportPDF(fmt) {
+$('exportBtn').addEventListener('click', exportPDF);
+$('pdfA4Btn').addEventListener('click', exportPDF);
+async function exportPDF() {
   const overlay = $('pdfOverlay'), st = $('pdfStatus');
   overlay.classList.add('active'); st.textContent = 'Capturing…';
   const app = document.querySelector('.app');
@@ -786,14 +785,13 @@ async function exportPDF(fmt) {
     });
     st.textContent = 'Building PDF…';
     const { jsPDF } = window.jspdf;
-    const dims = fmt === 'a1' ? [841, 594] : [420, 297];
-    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: dims });
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const pW = pdf.internal.pageSize.getWidth(), pH = pdf.internal.pageSize.getHeight(), mg = 8;
     const maxW = pW - mg * 2, maxH = pH - mg * 2;
     const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
     const iW = canvas.width * ratio, iH = canvas.height * ratio;
     pdf.addImage(canvas.toDataURL('image/jpeg', .95), 'JPEG', mg + (maxW - iW) / 2, mg + (maxH - iH) / 2, iW, iH);
-    pdf.save(`${S.info.project || 'timeline'}_${fmt.toUpperCase()}.pdf`);
+    pdf.save(`${S.info.project || 'timeline'}_A4.pdf`);
     st.textContent = 'Done!'; setTimeout(() => overlay.classList.remove('active'), 700);
   } catch (err) { st.textContent = 'Error: ' + err.message; setTimeout(() => overlay.classList.remove('active'), 2500); }
   finally {
