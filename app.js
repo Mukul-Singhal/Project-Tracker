@@ -88,7 +88,7 @@ const yearHeader = $('yearHeader'), monthHeader = $('monthHeader'), tlGrid = $('
 const sbRows = $('sbRows'), tlScroll = $('tlScroll');
 const nodePopup = $('nodePopup'), ctxMenu = $('ctxMenu');
 const modalOverlay = $('modalOverlay'), modalBody = $('modalBody'), modalTitle = $('modalTitle');
-let pendCell = null, dragNode = null, dox = 0, doy = 0, ctxId = null, ctxRowType = null, modalCb = null, dragVL = null, dvox = 0, dvoy = 0;
+let pendCell = null, dragNode = null, dox = 0, doy = 0, ctxId = null, ctxRowType = null, modalCb = null, dragVL = null, dvox = 0, dvoy = 0, dragRemark = null, drox = 0, droy = 0;
 
 // ─── SAMPLE DATA ─────────────────────────────────────────────────────────────
 function loadSample() {
@@ -527,7 +527,10 @@ $('addMsRowBtn').addEventListener('click', () => { S.leftTable.rows.push(Array(S
 $('addMsColBtn').addEventListener('click', () => { S.leftTable.cols.push('New Col'); S.leftTable.rows.forEach(r => r.push('')); renderBottomTables(); });
 $('addEopRowBtn').addEventListener('click', () => { S.rightTable.rows.push(Array(S.rightTable.cols.length).fill('')); renderBottomTables(); });
 $('addEopColBtn').addEventListener('click', () => { S.rightTable.cols.push('New Col'); S.rightTable.rows.forEach(r => r.push('')); renderBottomTables(); });
-$('remarksBox').addEventListener('input', () => { S.remarks = $('remarksBox').textContent.trim(); });
+$('remarksBox').addEventListener('input', () => {
+  S.remarks = $('remarksBox').textContent.trim();
+  renderCanvasRemarks();
+});
 
 // ─── VARIANT FLOATING LABELS ────────────────────────────────────────────────
 function renderVariantLabels() {
@@ -585,8 +588,50 @@ function onVLUp(e) {
   document.removeEventListener('mouseup', onVLUp);
 }
 
-// ─── CANVAS REMARKS (stub, implemented in Task 7) ───────────────────────────
-function renderCanvasRemarks() {}
+// ─── CANVAS REMARKS ─────────────────────────────────────────────────────────
+function renderCanvasRemarks() {
+  tlGrid.querySelectorAll('.canvas-remark').forEach(e => e.remove());
+  if (!S.remarks) return;
+  const el = document.createElement('div');
+  el.className = 'canvas-remark';
+  const defaultY = getTopOffset() + getPlannedH() + 4 + ROH / 2 + 18;
+  const pos = S.remarkPosition || { x: 120, y: defaultY };
+  el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
+  el.textContent = S.remarks;
+  el.addEventListener('mousedown', startRemarkDrag);
+  tlGrid.appendChild(el);
+}
+
+function startRemarkDrag(e) {
+  e.preventDefault();
+  dragRemark = e.currentTarget;
+  const r = dragRemark.getBoundingClientRect();
+  drox = e.clientX - r.left;
+  droy = e.clientY - r.top;
+  dragRemark.style.zIndex = '25';
+  document.addEventListener('mousemove', onRemarkMove);
+  document.addEventListener('mouseup', onRemarkUp);
+}
+
+function onRemarkMove(e) {
+  if (!dragRemark) return;
+  const gr = tlGrid.getBoundingClientRect();
+  dragRemark.style.left = (e.clientX - gr.left - drox) + 'px';
+  dragRemark.style.top = (e.clientY - gr.top - droy) + 'px';
+}
+
+function onRemarkUp(e) {
+  if (!dragRemark) return;
+  const gr = tlGrid.getBoundingClientRect();
+  S.remarkPosition = {
+    x: e.clientX - gr.left - drox,
+    y: e.clientY - gr.top - droy
+  };
+  dragRemark.style.zIndex = '7';
+  dragRemark = null;
+  document.removeEventListener('mousemove', onRemarkMove);
+  document.removeEventListener('mouseup', onRemarkUp);
+}
 
 // ─── HEADER FORM ─────────────────────────────────────────────────────────────
 function bindHeader() {
