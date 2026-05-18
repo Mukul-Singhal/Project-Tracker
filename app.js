@@ -532,30 +532,34 @@ $('remarksBox').addEventListener('input', () => { S.remarks = $('remarksBox').te
 // ─── VARIANT FLOATING LABELS ────────────────────────────────────────────────
 function renderVariantLabels() {
   tlGrid.querySelectorAll('.vr-float-label').forEach(e => e.remove());
-  S.variants.forEach((vr, vi) => {
-    const el = document.createElement('div');
-    el.className = 'vr-float-label';
-    el.dataset.vrId = vr.id;
-    const defaultY = vi * ROH + ROH / 2 - 7;
-    const lx = vr._lx !== undefined ? vr._lx : 50;
-    const ly = vr._ly !== undefined ? vr._ly : defaultY;
-    el.style.cssText = `left:${lx}px;top:${ly}px`;
-    el.innerHTML = `${vr.name}<button class="vfl-del" onclick="event.stopPropagation();deleteVariant('${vr.id}')">×</button>`;
-    el.addEventListener('mousedown', startVLabelDrag);
-    tlGrid.appendChild(el);
+  getPlanLanes().forEach((lane, laneIdx) => {
+    if (lane.type !== 'plan') return;
+    addVariantLabel(`plan:${lane.variantId}`, lane.variantId, lane.label, 50, getTopOffset() + laneIdx * ROH + ROH / 2 - 7, 'plan');
+  });
+  getActualLanes().forEach((lane, laneIdx) => {
+    if (lane.type !== 'actual') return;
+    addVariantLabel(`actual:${lane.variantId}`, lane.variantId, lane.label, 50, getTopOffset() + getPlannedH() + 4 + laneIdx * ROH + ROH / 2 - 7, 'actual');
   });
 }
+
+function addVariantLabel(key, variantId, text, defaultX, defaultY, mode) {
+  const el = document.createElement('div');
+  el.className = 'vr-float-label ' + (mode === 'actual' ? 'actual-vr-label' : 'plan-vr-label');
+  el.dataset.labelKey = key;
+  el.dataset.vrId = variantId;
+  const pos = S.labelPositions[key] || { x: defaultX, y: defaultY };
+  el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
+  el.innerHTML = `${text}<button class="vfl-del" onclick="event.stopPropagation();deleteVariant('${variantId}')">×</button>`;
+  el.addEventListener('mousedown', startVLabelDrag);
+  tlGrid.appendChild(el);
+}
+
 function startVLabelDrag(e) {
   if (e.target.classList.contains('vfl-del')) return;
   e.preventDefault();
   dragVL = e.currentTarget;
-  const r = dragVL.getBoundingClientRect(), gr = tlGrid.getBoundingClientRect();
+  const r = dragVL.getBoundingClientRect();
   dvox = e.clientX - r.left; dvoy = e.clientY - r.top;
-  const vr = S.variants.find(v => v.id === dragVL.dataset.vrId);
-  if (vr && vr._lx !== undefined) {
-    dragVL.style.left = vr._lx + 'px';
-    dragVL.style.top = vr._ly + 'px';
-  }
   dragVL.style.zIndex = '20';
   document.addEventListener('mousemove', onVLMove);
   document.addEventListener('mouseup', onVLUp);
@@ -569,12 +573,12 @@ function onVLMove(e) {
 function onVLUp(e) {
   if (!dragVL) return;
   const gr = tlGrid.getBoundingClientRect();
-  const vr = S.variants.find(v => v.id === dragVL.dataset.vrId);
-  if (vr) {
-    if (vr._lx === undefined) vr._lx = 50;
-    if (vr._ly === undefined) vr._ly = 0;
-    vr._lx = e.clientX - gr.left - dvox;
-    vr._ly = e.clientY - gr.top - dvoy;
+  const key = dragVL.dataset.labelKey;
+  if (key) {
+    S.labelPositions[key] = {
+      x: e.clientX - gr.left - dvox,
+      y: e.clientY - gr.top - dvoy
+    };
   }
   dragVL.style.zIndex = '6'; dragVL = null;
   document.removeEventListener('mousemove', onVLMove);

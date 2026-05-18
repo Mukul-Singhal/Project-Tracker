@@ -1146,6 +1146,17 @@ body {
   opacity: 1
 }
 
+.actual-vr-label {
+  background: linear-gradient(135deg, rgba(249, 115, 22, .18), rgba(249, 115, 22, .08));
+  border-color: rgba(249, 115, 22, .45);
+  color: var(--actual);
+  box-shadow: 0 2px 10px rgba(249, 115, 22, .15);
+}
+
+.actual-vr-label .vfl-del {
+  color: var(--actual);
+}
+
 /* ── POPUP ── */
 .popup {
   display: none;
