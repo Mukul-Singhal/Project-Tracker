@@ -6,12 +6,21 @@ const S = {
   actualNodes: [],   // same shape
   branches: [],      // [{id,variantId,parentNodeId,label}]
   branchNodes: [],   // [{id,branchId,col,type,topLabel,bottomLabel,date}]
+  actualBranchNodes: [],
   leftTable: { cols: ['Milestone', 'DOM Gas', 'DOM CNG'], rows: [['DA', '', ''], ['SOS', '', '']] },
   rightTable: { cols: ['Model Detail', 'Date- month/year'], rows: [['', '']] },
   remarks: '',
   years: [2024, 2025],
+  eopDate: '',
+  labelPositions: {},
+  remarkPosition: null,
   nid: 1
 };
+
+const NODE_SHAPES = [
+  { value: 'square', label: 'Square' },
+  { value: 'circle', label: 'Circle' },
+];
 
 const COL = 52, ROH = 90, YH = 34, MH = 30;
 const $ = id => document.getElementById(id);
@@ -19,11 +28,59 @@ const uid = () => 'i' + (S.nid++);
 const fmtDate = d => { if (!d) return ''; const [y, m] = d.split('-'); return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+m - 1] + ' ' + y };
 const totalCols = () => S.years.length * 12;
 const isDisc = col => false;
-const getPlannedH = () => S.variants.length * ROH;
-const getActualH = () => S.variants.length * ROH;
-const getBranchH = () => S.branches.length * ROH;
-const getSidebarH = () => getPlannedH() + getActualH();
-const getGridGroupH = () => getPlannedH() + getBranchH() + getActualH();
+
+// ─── LANE HELPERS ────────────────────────────────────────────────────────────
+const hasEopLane = () => !!S.eopDate;
+const getTopOffset = () => hasEopLane() ? ROH : 0;
+
+function dateToCol(date) {
+  if (!date) return -1;
+  const match = String(date).trim().match(/^(\d{4})-(\d{1,2})$/);
+  if (!match) return -1;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const yearIndex = S.years.indexOf(year);
+  if (yearIndex < 0 || month < 1 || month > 12) return -1;
+  return yearIndex * 12 + month - 1;
+}
+
+function ensureYearVisible(date) {
+  const match = String(date || '').trim().match(/^(\d{4})-(\d{1,2})$/);
+  if (!match) return;
+  const targetYear = Number(match[1]);
+  while (S.years[S.years.length - 1] < targetYear) S.years.push(S.years[S.years.length - 1] + 1);
+}
+
+function getBranchesForVariant(variantId) {
+  return S.branches.filter(b => b.variantId === variantId);
+}
+
+function getPlanLanes() {
+  return S.variants.flatMap(v => [
+    { type: 'plan', variantId: v.id, label: v.name },
+    ...getBranchesForVariant(v.id).map(b => ({ type: 'branch', branchId: b.id, variantId: v.id, label: b.label }))
+  ]);
+}
+
+function getActualLanes() {
+  return S.variants.flatMap(v => [
+    { type: 'actual', variantId: v.id, label: v.name },
+    ...getBranchesForVariant(v.id).map(b => ({ type: 'actualBranch', branchId: b.id, variantId: v.id, label: b.label }))
+  ]);
+}
+
+function findPlanLaneIndex(type, id) {
+  return getPlanLanes().findIndex(l => type === 'plan' ? l.variantId === id && l.type === 'plan' : l.branchId === id && l.type === 'branch');
+}
+
+function findActualLaneIndex(type, id) {
+  return getActualLanes().findIndex(l => type === 'actual' ? l.variantId === id && l.type === 'actual' : l.branchId === id && l.type === 'actualBranch');
+}
+
+const getPlannedH = () => getPlanLanes().length * ROH;
+const getActualH = () => getActualLanes().length * ROH;
+const getSidebarH = () => getTopOffset() + getPlannedH() + getActualH();
+const getGridGroupH = () => getTopOffset() + getPlannedH() + 4 + getActualH();
 const getPB = vid => S.branches.filter(b => b.variantId === vid);
 
 // DOM refs
@@ -87,6 +144,7 @@ function renderSidebar() {
     <div class="sr-cell loc" style="height:${totalH}px">${S.info.location || '—'}</div>
     <div class="sr-cell plant" style="height:${totalH}px">${S.info.plant || '—'}</div>
     <div class="sr-cell pa" style="height:${totalH}px;flex-direction:column;padding:0">
+      ${hasEopLane() ? `<div class="pa-eop-spacer" style="height:${getTopOffset()}px"></div>` : ''}
       <div class="pa-plan" style="height:${getPlannedH()}px">plan</div>
       <div class="pa-actual" style="height:${getActualH()}px">Actual</div>
     </div>`;

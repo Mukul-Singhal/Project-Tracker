@@ -419,6 +419,12 @@ body {
   color: var(--actual)
 }
 
+.pa-eop-spacer {
+  flex: none;
+  border-bottom: 2px solid rgba(232, 64, 64, .25);
+  background: rgba(232, 64, 64, .035);
+}
+
 .sr-divider {
   height: 4px;
   background: var(--border2);
