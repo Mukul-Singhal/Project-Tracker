@@ -418,6 +418,7 @@ $('npConfirm').addEventListener('click', () => {
   };
   if (rType === 'plan') { nd.variantId = vId; S.planNodes.push(nd); }
   else if (rType === 'branch') { nd.branchId = branchId; S.branchNodes.push(nd); }
+  else if (rType === 'actualBranch') { nd.branchId = branchId; S.actualBranchNodes.push(nd); }
   else { nd.variantId = vId; S.actualNodes.push(nd); }
   nodePopup.classList.remove('active'); pendCell = null;
   renderGrid(); renderNodes();
@@ -436,7 +437,9 @@ $('ctxBranch').addEventListener('click', () => {
   const parent = S.planNodes.find(n => n.id === ctxId); if (!parent) return;
   openModal('New Branch', `<div class="form-group"><label>Branch Label</label><input id="f_bl" type="text" placeholder="e.g. Gas variant"/></div>`, () => {
     const label = $('f_bl').value.trim() || 'Branch';
-    S.branches.push({ id: uid(), variantId: parent.variantId, parentNodeId: ctxId, label });
+    const branch = { id: uid(), variantId: parent.variantId, parentNodeId: ctxId, label };
+    const insertAt = S.branches.reduce((idx, b, i) => b.variantId === parent.variantId ? i + 1 : idx, S.branches.length);
+    S.branches.splice(insertAt, 0, branch);
     renderAll();
   });
 });
@@ -445,6 +448,7 @@ $('ctxDelete').addEventListener('click', () => {
   if (!ctxId) return;
   if (ctxRowType === 'plan') S.planNodes = S.planNodes.filter(n => n.id !== ctxId);
   else if (ctxRowType === 'branch') S.branchNodes = S.branchNodes.filter(n => n.id !== ctxId);
+  else if (ctxRowType === 'actualBranch') S.actualBranchNodes = S.actualBranchNodes.filter(n => n.id !== ctxId);
   else S.actualNodes = S.actualNodes.filter(n => n.id !== ctxId);
   renderGrid(); renderNodes(); ctxId = null;
 });
@@ -468,6 +472,7 @@ window.deleteVariant = id => {
   const bids = S.branches.filter(b => b.variantId === id).map(b => b.id);
   S.branches = S.branches.filter(b => b.variantId !== id);
   S.branchNodes = S.branchNodes.filter(n => !bids.includes(n.branchId));
+  S.actualBranchNodes = S.actualBranchNodes.filter(n => !bids.includes(n.branchId));
   renderAll();
 };
 
