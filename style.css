@@ -528,37 +528,7 @@ body {
   opacity: 1;
 }
 
-/* Plan pill in timeline grid */
-.plan-pill {
-  position: absolute;
-  left: 8px;
-  z-index: 3;
-  pointer-events: none;
-  background: rgba(37, 99, 235, .12) !important;
-  border: 1px solid rgba(37, 99, 235, .35) !important;
-  color: var(--plan) !important;
-  font-size: 9px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 10px;
-  white-space: nowrap;
-}
-
-/* Actual pill in timeline grid */
-.actual-pill {
-  position: absolute;
-  left: 8px;
-  z-index: 3;
-  pointer-events: none;
-  background: rgba(249, 115, 22, .12) !important;
-  border: 1px solid rgba(249, 115, 22, .35) !important;
-  color: var(--actual) !important;
-  font-size: 9px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 10px;
-  white-space: nowrap;
-}
+/* Plan/actual pills removed - labels handled by floating variant labels */
 
 .sidebar-resize-handle {
   position: absolute;
@@ -820,6 +790,45 @@ body {
   padding: 2px 8px;
   border-radius: 10px;
   white-space: nowrap;
+}
+
+.actual-branch-sub {
+  background: rgba(249, 115, 22, .035);
+  border-bottom: 1px dashed rgba(249, 115, 22, .28);
+}
+
+.actual-branch-pill {
+  background: rgba(249, 115, 22, .12);
+  border-color: rgba(249, 115, 22, .35);
+  color: var(--actual);
+}
+
+/* ── EOP LANE ── */
+.eop-row {
+  background: rgba(232, 64, 64, .035);
+  border-bottom: 2px solid rgba(232, 64, 64, .25);
+}
+
+.eop-cell {
+  cursor: default;
+}
+
+.eop-line {
+  position: absolute;
+  height: 0;
+  border-top: 2px dashed #e84040;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.eop-x {
+  position: absolute;
+  z-index: 5;
+  color: #e84040;
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .branch-tag {

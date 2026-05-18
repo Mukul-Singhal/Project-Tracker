@@ -163,59 +163,67 @@ function renderGrid() {
     tlGrid.appendChild(h);
     return;
   }
+
   const grp = document.createElement('div');
   grp.className = 'grid-vr-grp';
   grp.style.position = 'relative';
   grp.style.height = getGridGroupH() + 'px';
   grp.dataset.vId = S.variants[0] ? S.variants[0].id : '';
 
-  // PLANNED SECTION: one sub-row per variant
-  S.variants.forEach((vr, vi) => {
-    const sr = makeSubRow(tc, vr.id, 'plan');
-    if (vi === 0) {
-      const pill = document.createElement('div');
-      pill.className = 'plan-pill';
-      pill.textContent = 'Planned';
-      pill.style.top = (ROH / 2 - 7) + 'px';
-      sr.appendChild(pill);
-    }
+  renderEopLane(grp, tc);
+
+  getPlanLanes().forEach(lane => {
+    const sr = lane.type === 'branch'
+      ? makeBranchSubRow(tc, lane.branchId, 'branch', lane.label)
+      : makeSubRow(tc, lane.variantId, 'plan');
     grp.appendChild(sr);
   });
 
-  // BRANCH ROWS: one sub-row per branch, tagged
-  S.branches.forEach(br => {
-    const bsr = makeBranchSubRow(tc, br.id);
-    const pill = document.createElement('div');
-    pill.className = 'branch-div-pill';
-    pill.textContent = '↳ ' + br.label;
-    bsr.appendChild(pill);
-    grp.appendChild(bsr);
-  });
-
-  // DIVIDER
   const dv = document.createElement('div');
   dv.className = 'pa-grid-div';
   dv.style.height = '4px';
   dv.style.background = 'var(--border2)';
   grp.appendChild(dv);
 
-  // ACTUAL SECTION: one sub-row per variant
-  S.variants.forEach((vr, vi) => {
-    const sr = makeSubRow(tc, vr.id, 'actual');
-    if (vi === 0) sr.classList.add('actual-first');
-    if (vi === 0) {
-      const pill = document.createElement('div');
-      pill.className = 'actual-pill';
-      pill.textContent = 'Actual';
-      pill.style.top = (ROH / 2 - 7) + 'px';
-      sr.appendChild(pill);
-    }
+  getActualLanes().forEach((lane, index) => {
+    const sr = lane.type === 'actualBranch'
+      ? makeBranchSubRow(tc, lane.branchId, 'actualBranch', lane.label)
+      : makeSubRow(tc, lane.variantId, 'actual');
+    if (index === 0) sr.classList.add('actual-first');
     grp.appendChild(sr);
   });
 
   tlGrid.appendChild(grp);
   drawLines();
   renderVariantLabels();
+  renderCanvasRemarks();
+}
+
+function renderEopLane(grp, tc) {
+  if (!hasEopLane()) return;
+  const row = document.createElement('div');
+  row.className = 'grid-sub-row eop-row';
+  row.style.height = ROH + 'px';
+  row.style.position = 'relative';
+  for (let col = 0; col < tc; col++) {
+    const c = document.createElement('div');
+    c.className = 'g-cell eop-cell';
+    row.appendChild(c);
+  }
+  grp.appendChild(row);
+  const col = dateToCol(S.eopDate);
+  if (col < 0) return;
+  const y = ROH / 2;
+  const x = col * COL + COL / 2;
+  const line = document.createElement('div');
+  line.className = 'eop-line';
+  line.style.cssText = `left:0;top:${y - 1}px;width:${x}px`;
+  row.appendChild(line);
+  const mark = document.createElement('div');
+  mark.className = 'eop-x';
+  mark.style.cssText = `left:${x - 8}px;top:${y - 12}px`;
+  mark.textContent = 'X';
+  row.appendChild(mark);
 }
 
 function makeSubRow(tc, vId, rType) {
@@ -232,17 +240,21 @@ function makeSubRow(tc, vId, rType) {
   return sr;
 }
 
-function makeBranchSubRow(tc, branchId) {
+function makeBranchSubRow(tc, branchId, rType = 'branch', label = '') {
   const sr = document.createElement('div');
-  sr.className = 'grid-sub-row branch-sub';
+  sr.className = 'grid-sub-row branch-sub' + (rType === 'actualBranch' ? ' actual-branch-sub' : '');
   sr.style.height = ROH + 'px'; sr.style.position = 'relative';
   for (let col = 0; col < tc; col++) {
     const c = document.createElement('div');
     c.className = 'g-cell';
-    c.dataset.col = col; c.dataset.branchId = branchId; c.dataset.rType = 'branch';
+    c.dataset.col = col; c.dataset.branchId = branchId; c.dataset.rType = rType;
     c.addEventListener('click', onCellClick);
     sr.appendChild(c);
   }
+  const pill = document.createElement('div');
+  pill.className = 'branch-div-pill' + (rType === 'actualBranch' ? ' actual-branch-pill' : '');
+  pill.textContent = '↳ ' + (label || 'Branch');
+  sr.appendChild(pill);
   return sr;
 }
 
@@ -531,6 +543,9 @@ function onVLUp(e) {
   document.removeEventListener('mousemove', onVLMove);
   document.removeEventListener('mouseup', onVLUp);
 }
+
+// ─── CANVAS REMARKS (stub, implemented in Task 7) ───────────────────────────
+function renderCanvasRemarks() {}
 
 // ─── HEADER FORM ─────────────────────────────────────────────────────────────
 function bindHeader() {
