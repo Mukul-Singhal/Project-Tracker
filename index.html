@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Model Timeline Planner</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+
+<body data-theme="light">
+  <div class="app">
+
+    <!-- MODEL HEADER -->
+    <header class="model-header">
+      <div class="mh-row mh-row1">
+        <div class="mh-title">
+          <span class="mh-icon">⚡</span>
+          <a class="mh-label">Model Details</a>
+        </div>
+        <div class="mh-fields">
+          <div class="mh-fg"><label>Project</label><input id="fProject" placeholder="Project" /></div>
+          <div class="mh-fg"><label>Location</label><input id="fLocation" placeholder="Location" /></div>
+          <div class="mh-fg"><label>Plant</label><input id="fPlant" placeholder="Plant" /></div>
+        </div>
+        <div class="mh-right">
+          <button class="tbtn accent" id="exportBtn">⬇ Export</button>
+          <div class="publish-wrap">
+            <span class="pub-lbl">Publish Status</span>
+            <button class="publish-btn" id="publishToggle" data-pub="false">Not Publish</button>
+          </div>
+        </div>
+      </div>
+      <div class="mh-row mh-row2">
+        <div class="variant-add">
+          <label>Variants</label>
+          <input id="variantInput" placeholder="Variant name…" />
+          <button class="tbtn accent sm" id="addVariantBtn">+ Add</button>
+        </div>
+        <div class="mh-fg"><label>Project Type</label><input id="fProjType" value="MC" /></div>
+        <div class="mh-fg">
+          <label>Status</label>
+          <select id="fStatus">
+            <option>On Track</option>
+            <option selected>Delayed</option>
+            <option>Completed</option>
+            <option>At Risk</option>
+          </select>
+        </div>
+        <div class="mh-fg">
+          <label>Node</label>
+          <select id="nodeTypeSelect">
+            <option value="square">■ Square</option>
+            <option value="circle">● Circle</option>
+          </select>
+        </div>
+        <div class="mh-tools">
+          <button class="tbtn ghost sm" id="themeToggleBtn">🌙</button>
+          <button class="tbtn ghost sm" id="pdfA3Btn">📄 A3</button>
+          <button class="tbtn ghost sm" id="pdfA1Btn">📄 A1</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- MAIN -->
+    <div class="main">
+      <!-- SIDEBAR -->
+      <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div class="sh-cell sno">SL.<br>NO.</div>
+          <div class="sh-cell proj">PROJECT</div>
+          <div class="sh-cell loc">LOCATION</div>
+          <div class="sh-cell plant">PLANT</div>
+          <div class="sh-cell pa">P/A</div>
+        </div>
+        <div class="sidebar-rows" id="sbRows"></div>
+        <div class="sidebar-resize-handle" id="sidebarResizeHandle"></div>
+      </div>
+
+      <!-- TIMELINE -->
+      <div class="timeline-area" id="timelineArea">
+        <div class="tl-scroll" id="tlScroll">
+          <div class="tl-sticky-top">
+            <div class="year-header" id="yearHeader"></div>
+            <div class="month-header" id="monthHeader"></div>
+          </div>
+          <div class="tl-grid" id="tlGrid"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BOTTOM SECTION -->
+    <div class="bottom-section">
+      <div class="bottom-tables">
+        <div class="table-card">
+          <div class="tc-hdr">
+            <span>Milestone Table</span>
+            <button class="tbtn accent sm" id="addMsRowBtn">+ Row</button>
+            <button class="tbtn accent sm" id="addMsColBtn">+ Col</button>
+          </div>
+          <div class="table-wrap" id="msTableWrap"></div>
+        </div>
+        <div class="table-card">
+          <div class="tc-hdr">
+            <span>EOP Table</span>
+            <button class="tbtn accent sm" id="addEopRowBtn">+ Row</button>
+            <button class="tbtn accent sm" id="addEopColBtn">+ Col</button>
+          </div>
+          <div class="table-wrap" id="eopTableWrap"></div>
+          <div class="remarks-wrap">
+            <label class="rem-lbl">Remarks</label>
+            <div class="remarks-box" id="remarksBox" contenteditable="true" data-ph="Add remarks…"></div>
+          </div>
+        </div>
+      </div>
+      <div class="bottom-actions">
+        <button class="tbtn accent lg" id="submitBtn">Submit</button>
+        <button class="tbtn ghost lg" id="backBtn">Back</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Node Popup -->
+  <div class="popup" id="nodePopup">
+    <div class="popup-title">Add Stage</div>
+    <input type="text" id="npTop" placeholder="Top label" />
+    <input type="text" id="npBottom" placeholder="Bottom label" />
+    <input type="month" id="npDate" />
+    <div class="popup-btns">
+      <button class="tbtn ghost" id="npCancel">Cancel</button>
+      <button class="tbtn accent" id="npConfirm">Add Stage</button>
+    </div>
+  </div>
+
+  <!-- Context Menu -->
+  <div class="ctx-menu" id="ctxMenu">
+    <button class="ctx-item" id="ctxBranch">🌿 New Branch from here</button>
+    <button class="ctx-item danger" id="ctxDelete">🗑 Delete Stage</button>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-hdr">
+        <span id="modalTitle">Dialog</span>
+        <button class="modal-x" id="modalClose">✕</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-ftr">
+        <button class="tbtn ghost" id="modalCancel">Cancel</button>
+        <button class="tbtn accent" id="modalOk">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PDF Overlay -->
+  <div class="pdf-overlay" id="pdfOverlay">
+    <div class="pdf-spinner"></div>
+    <span id="pdfStatus">Generating PDF…</span>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>
