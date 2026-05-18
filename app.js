@@ -407,13 +407,14 @@ function onCellClick(e) {
   nodePopup.style.cssText = `left:${r.left}px;top:${r.bottom + 4}px`;
   nodePopup.classList.add('active');
   $('npTop').value = ''; $('npBottom').value = ''; $('npDate').value = '';
+  $('npShape').value = $('nodeTypeSelect').value;
   $('npTop').focus();
 }
 $('npConfirm').addEventListener('click', () => {
   if (!pendCell) return;
   const { col, vId, rType, branchId } = pendCell;
   const nd = {
-    id: uid(), col, type: $('nodeTypeSelect').value,
+    id: uid(), col, type: $('npShape').value,
     topLabel: $('npTop').value.trim(), bottomLabel: $('npBottom').value.trim(), date: $('npDate').value
   };
   if (rType === 'plan') { nd.variantId = vId; S.planNodes.push(nd); }
@@ -808,8 +809,14 @@ $('modalOverlay').addEventListener('click', e => { if (e.target === $('modalOver
 function closeModal() { modalOverlay.classList.remove('active'); modalCb = null; }
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
+function fillShapeSelect(selectEl) {
+  selectEl.innerHTML = NODE_SHAPES.map(shape => `<option value="${shape.value}">${shape.label}</option>`).join('');
+}
+
 loadSample();
 bindHeader();
+fillShapeSelect($('nodeTypeSelect'));
+fillShapeSelect($('npShape'));
 renderAll();
 syncScroll();
 setupResize();
