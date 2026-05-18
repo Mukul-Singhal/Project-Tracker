@@ -726,6 +726,12 @@ $('themeToggleBtn').addEventListener('click', () => {
   $('themeToggleBtn').textContent = isDark ? '🌙' : '☀️';
 });
 
+// ─── ADD YEAR ────────────────────────────────────────────────────────────────
+$('addYearBtn').addEventListener('click', () => {
+  S.years.push(S.years[S.years.length - 1] + 1);
+  renderAll();
+});
+
 // ─── SUBMIT / BACK ───────────────────────────────────────────────────────────
 function parseEopDate() {
   const row = S.rightTable.rows[0] || [];
