@@ -264,34 +264,52 @@ function drawLines() {
   const grp = tlGrid.querySelector('.grid-vr-grp');
   if (!grp || !S.variants.length) return;
 
-  // PLANNED LINES: one line per variant across its plan nodes
-  S.variants.forEach((vr, vi) => {
+  // PLANNED LINES
+  S.variants.forEach(vr => {
+    const laneIdx = findPlanLaneIndex('plan', vr.id);
+    if (laneIdx < 0) return;
     const pn = S.planNodes.filter(n => n.variantId === vr.id).sort((a, b) => a.col - b.col);
-    const y = vi * ROH + ROH / 2;
+    const y = getTopOffset() + laneIdx * ROH + ROH / 2;
     for (let i = 0; i < pn.length - 1; i++)
       mkLine(grp, pn[i].col * COL + COL / 2, y, pn[i + 1].col * COL + COL / 2, y, '#2563eb');
   });
 
   // BRANCH LINES + FORK LINES
-  S.branches.forEach((br, bi) => {
-    const bY = (S.variants.length + bi) * ROH + ROH / 2;
+  S.branches.forEach(br => {
+    const branchLaneIdx = findPlanLaneIndex('branch', br.id);
+    if (branchLaneIdx < 0) return;
+    const bY = getTopOffset() + branchLaneIdx * ROH + ROH / 2;
     const parent = S.planNodes.find(n => n.id === br.parentNodeId);
     if (parent) {
-      const parentVrIdx = S.variants.findIndex(v => v.id === parent.variantId);
-      const fromY = parentVrIdx * ROH + ROH / 2;
-      mkLineV(grp, parent.col * COL + COL / 2, fromY, bY, '#00c9b1');
+      const parentLaneIdx = findPlanLaneIndex('plan', parent.variantId);
+      if (parentLaneIdx >= 0) {
+        const fromY = getTopOffset() + parentLaneIdx * ROH + ROH / 2;
+        mkLineV(grp, parent.col * COL + COL / 2, fromY, bY, '#00c9b1');
+      }
     }
     const bn = S.branchNodes.filter(n => n.branchId === br.id).sort((a, b) => a.col - b.col);
     for (let i = 0; i < bn.length - 1; i++)
       mkLine(grp, bn[i].col * COL + COL / 2, bY, bn[i + 1].col * COL + COL / 2, bY, '#00c9b1');
   });
 
-  // ACTUAL LINES: one line per variant across its actual nodes
-  S.variants.forEach((vr, vi) => {
+  // ACTUAL LINES
+  S.variants.forEach(vr => {
+    const laneIdx = findActualLaneIndex('actual', vr.id);
+    if (laneIdx < 0) return;
     const an = S.actualNodes.filter(n => n.variantId === vr.id).sort((a, b) => a.col - b.col);
-    const y = (S.variants.length + S.branches.length + vi) * ROH + ROH / 2;
+    const y = getTopOffset() + getPlannedH() + 4 + laneIdx * ROH + ROH / 2;
     for (let i = 0; i < an.length - 1; i++)
       mkLine(grp, an[i].col * COL + COL / 2, y, an[i + 1].col * COL + COL / 2, y, '#f97316');
+  });
+
+  // ACTUAL BRANCH LINES
+  S.branches.forEach(br => {
+    const laneIdx = findActualLaneIndex('branch', br.id);
+    if (laneIdx < 0) return;
+    const y = getTopOffset() + getPlannedH() + 4 + laneIdx * ROH + ROH / 2;
+    const nodes = S.actualBranchNodes.filter(n => n.branchId === br.id).sort((a, b) => a.col - b.col);
+    for (let i = 0; i < nodes.length - 1; i++)
+      mkLine(grp, nodes[i].col * COL + COL / 2, y, nodes[i + 1].col * COL + COL / 2, y, '#f97316');
   });
 }
 
@@ -314,29 +332,42 @@ function renderNodes() {
   const grp = tlGrid.querySelector('.grid-vr-grp');
   if (!grp) return;
 
-  // PLAN NODES: variant i → row i in Planned section
+  // PLAN NODES
   S.planNodes.forEach(n => {
-    const vrIdx = S.variants.findIndex(v => v.id === n.variantId);
-    const y = vrIdx * ROH + ROH / 2;
+    const laneIdx = findPlanLaneIndex('plan', n.variantId);
+    if (laneIdx < 0) return;
+    const y = getTopOffset() + laneIdx * ROH + ROH / 2;
     const el = mkNode(n, 'plan');
     el.style.cssText = `left:${n.col * COL + COL / 2 - 14}px;top:${y - 14}px`;
     grp.appendChild(el);
   });
 
-  // BRANCH NODES: branch bi → row (variants.length + bi) in Planned section
+  // BRANCH NODES
   S.branchNodes.forEach(n => {
-    const brIdx = S.branches.findIndex(b => b.id === n.branchId);
-    const y = (S.variants.length + brIdx) * ROH + ROH / 2;
+    const laneIdx = findPlanLaneIndex('branch', n.branchId);
+    if (laneIdx < 0) return;
+    const y = getTopOffset() + laneIdx * ROH + ROH / 2;
     const el = mkNode(n, 'branch');
     el.style.cssText = `left:${n.col * COL + COL / 2 - 14}px;top:${y - 14}px`;
     grp.appendChild(el);
   });
 
-  // ACTUAL NODES: variant i → row (variants.length + branches.length + i) in Actual section
+  // ACTUAL NODES
   S.actualNodes.forEach(n => {
-    const vrIdx = S.variants.findIndex(v => v.id === n.variantId);
-    const y = (S.variants.length + S.branches.length + vrIdx) * ROH + ROH / 2;
+    const laneIdx = findActualLaneIndex('actual', n.variantId);
+    if (laneIdx < 0) return;
+    const y = getTopOffset() + getPlannedH() + 4 + laneIdx * ROH + ROH / 2;
     const el = mkNode(n, 'actual');
+    el.style.cssText = `left:${n.col * COL + COL / 2 - 14}px;top:${y - 14}px`;
+    grp.appendChild(el);
+  });
+
+  // ACTUAL BRANCH NODES
+  S.actualBranchNodes.forEach(n => {
+    const laneIdx = findActualLaneIndex('branch', n.branchId);
+    if (laneIdx < 0) return;
+    const y = getTopOffset() + getPlannedH() + 4 + laneIdx * ROH + ROH / 2;
+    const el = mkNode(n, 'actualBranch');
     el.style.cssText = `left:${n.col * COL + COL / 2 - 14}px;top:${y - 14}px`;
     grp.appendChild(el);
   });
@@ -358,6 +389,7 @@ function mkNode(n, rType) {
     e.stopPropagation();
     if (rType === 'plan') S.planNodes = S.planNodes.filter(x => x.id !== n.id);
     else if (rType === 'branch') S.branchNodes = S.branchNodes.filter(x => x.id !== n.id);
+    else if (rType === 'actualBranch') S.actualBranchNodes = S.actualBranchNodes.filter(x => x.id !== n.id);
     else S.actualNodes = S.actualNodes.filter(x => x.id !== n.id);
     renderGrid(); renderNodes();
   });
@@ -593,7 +625,13 @@ function onNodeUp(e) {
   const grp = dragNode.closest('.grid-vr-grp');
   const gr = grp.getBoundingClientRect();
   const nid = dragNode.dataset.nodeId, rType = dragNode.dataset.rType;
-  const arr = rType === 'plan' ? S.planNodes : rType === 'branch' ? S.branchNodes : S.actualNodes;
+  const arr = rType === 'plan'
+    ? S.planNodes
+    : rType === 'branch'
+      ? S.branchNodes
+      : rType === 'actualBranch'
+        ? S.actualBranchNodes
+        : S.actualNodes;
   const node = arr.find(n => n.id === nid);
   if (node) node.col = Math.max(0, Math.min(Math.round((e.clientX - gr.left - dox + 14) / COL), totalCols() - 1));
   dragNode.style.opacity = '1'; dragNode.style.zIndex = '5';
