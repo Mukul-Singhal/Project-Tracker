@@ -677,9 +677,34 @@ $('themeToggleBtn').addEventListener('click', () => {
 });
 
 // ─── SUBMIT / BACK ───────────────────────────────────────────────────────────
+function parseEopDate() {
+  const row = S.rightTable.rows[0] || [];
+  const raw = (row[1] || '').trim();
+  if (/^\d{4}-\d{2}$/.test(raw)) return raw;
+
+  const monthYear = raw.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})$/i);
+  if (monthYear) {
+    const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+    const month = months.indexOf(monthYear[1].slice(0, 3).toLowerCase()) + 1;
+    return `${monthYear[2]}-${String(month).padStart(2, '0')}`;
+  }
+
+  const slash = raw.match(/^(\d{1,2})\/(\d{4})$/);
+  if (slash) return `${slash[2]}-${String(Number(slash[1])).padStart(2, '0')}`;
+
+  return '';
+}
+
 $('submitBtn').addEventListener('click', () => {
+  const eopDate = parseEopDate();
+  if (!eopDate) {
+    alert('Enter EOP date in Date- month/year as YYYY-MM, Mon YYYY, or MM/YYYY.');
+    return;
+  }
+  ensureYearVisible(eopDate);
+  S.eopDate = eopDate;
   console.log('State:', JSON.stringify(S, null, 2));
-  alert('Submitted! Check console for full state.');
+  renderAll();
 });
 $('backBtn').addEventListener('click', () => { if (confirm('Go back? Unsaved changes will be lost.')) history.back(); });
 
