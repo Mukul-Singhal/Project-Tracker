@@ -150,6 +150,46 @@ body {
   flex-shrink: 0
 }
 
+.draft-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid rgba(249, 115, 22, .45);
+  border-radius: 8px;
+  background: rgba(249, 115, 22, .12);
+  color: #9a3412;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.draft-status[hidden] {
+  display: none;
+}
+
+.draft-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #f97316;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, .18);
+  flex: none;
+}
+
+.draft-revert {
+  border: 0;
+  border-left: 1px solid rgba(154, 52, 18, .25);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 1px 0 1px 8px;
+}
+
+.draft-revert:hover {
+  text-decoration: underline;
+}
+
 .publish-wrap {
   display: flex;
   flex-direction: column;
@@ -425,6 +465,12 @@ body {
   background: rgba(232, 64, 64, .035);
 }
 
+.pa-divider {
+  flex: none;
+  background: var(--border2);
+  opacity: .5;
+}
+
 .sr-divider {
   height: 4px;
   background: var(--border2);
@@ -664,6 +710,64 @@ body {
   height: 1px;
   background: var(--border);
   opacity: .5
+}
+
+/* ── RELATIONSHIP ARROWS ── */
+.tl-relationship-svg {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.branch-start-arrow {
+  fill: none;
+  stroke: #00c9b1;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: .9;
+}
+
+.merge-link-arrow {
+  fill: none;
+  stroke: #7c3aed;
+  stroke-width: 2;
+  stroke-dasharray: 6 5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: .92;
+}
+
+.merge-select-mode .merge-valid-target .node-shape {
+  box-shadow: 0 0 0 4px rgba(124, 58, 237, .14);
+}
+
+.merge-select-mode .merge-valid-target {
+  cursor: copy;
+}
+
+.merge-select-mode .merge-invalid-target {
+  cursor: not-allowed;
+}
+
+.merge-select-mode .merge-invalid-target .node-shape {
+  opacity: .45;
+}
+
+.merge-target-hint {
+  position: absolute;
+  left: 12px;
+  z-index: 12;
+  background: rgba(124, 58, 237, .12);
+  border: 1px solid rgba(124, 58, 237, .45);
+  color: #6d28d9;
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  pointer-events: none;
 }
 
 /* ── NODES ── */
@@ -1457,4 +1561,72 @@ input[type="month"] {
     overflow: visible !important;
     height: auto !important
   }
+}
+
+/* ── DRS fields in node popup ── */
+.drs-check-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  margin-top: 8px;
+  color: var(--fg);
+  cursor: pointer;
+}
+.drs-check-label input[type="checkbox"] {
+  accent-color: var(--plan);
+  width: 15px;
+  height: 15px;
+}
+.drs-detail {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  margin-top: 6px;
+  background: var(--bg2);
+  color: var(--fg);
+  box-sizing: border-box;
+}
+.drs-detail:focus {
+  outline: none;
+  border-color: var(--plan);
+}
+
+/* ── DRS badge on nodes ── */
+.node-drs-badge {
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  background: #7c3aed;
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 4px;
+  pointer-events: none;
+  letter-spacing: .3px;
+}
+
+/* ── Month input in EOP table ── */
+.dyn-td-date {
+  padding: 0 4px;
+}
+.dyn-date-input {
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--fg);
+  width: 100%;
+  padding: 4px 0;
+  outline: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+.dyn-date-input:focus {
+  outline: 1px solid var(--plan);
+  border-radius: 3px;
 }
