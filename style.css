@@ -1562,3 +1562,71 @@ input[type="month"] {
     height: auto !important
   }
 }
+
+/* ── DRS fields in node popup ── */
+.drs-check-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  margin-top: 8px;
+  color: var(--fg);
+  cursor: pointer;
+}
+.drs-check-label input[type="checkbox"] {
+  accent-color: var(--plan);
+  width: 15px;
+  height: 15px;
+}
+.drs-detail {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  margin-top: 6px;
+  background: var(--bg2);
+  color: var(--fg);
+  box-sizing: border-box;
+}
+.drs-detail:focus {
+  outline: none;
+  border-color: var(--plan);
+}
+
+/* ── DRS badge on nodes ── */
+.node-drs-badge {
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  background: #7c3aed;
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 4px;
+  pointer-events: none;
+  letter-spacing: .3px;
+}
+
+/* ── Month input in EOP table ── */
+.dyn-td-date {
+  padding: 0 4px;
+}
+.dyn-date-input {
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--fg);
+  width: 100%;
+  padding: 4px 0;
+  outline: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+.dyn-date-input:focus {
+  outline: 1px solid var(--plan);
+  border-radius: 3px;
+}
