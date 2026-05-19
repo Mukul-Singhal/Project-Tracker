@@ -6,12 +6,21 @@ const S = {
   actualNodes: [],   // same shape
   branches: [],      // [{id,variantId,parentNodeId,label}]
   branchNodes: [],   // [{id,branchId,col,type,topLabel,bottomLabel,date}]
+  actualBranchNodes: [],
   leftTable: { cols: ['Milestone', 'DOM Gas', 'DOM CNG'], rows: [['DA', '', ''], ['SOS', '', '']] },
   rightTable: { cols: ['Model Detail', 'Date- month/year'], rows: [['', '']] },
   remarks: '',
   years: [2024, 2025],
+  eopDate: '',
+  labelPositions: {},
+  remarkPosition: null,
   nid: 1
 };
+
+const NODE_SHAPES = [
+  { value: 'square', label: 'Square' },
+  { value: 'circle', label: 'Circle' },
+];
 
 const COL = 52, ROH = 90, YH = 34, MH = 30;
 const $ = id => document.getElementById(id);
@@ -19,11 +28,59 @@ const uid = () => 'i' + (S.nid++);
 const fmtDate = d => { if (!d) return ''; const [y, m] = d.split('-'); return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+m - 1] + ' ' + y };
 const totalCols = () => S.years.length * 12;
 const isDisc = col => false;
-const getPlannedH = () => S.variants.length * ROH;
-const getActualH = () => S.variants.length * ROH;
-const getBranchH = () => S.branches.length * ROH;
-const getSidebarH = () => getPlannedH() + getActualH();
-const getGridGroupH = () => getPlannedH() + getBranchH() + getActualH();
+
+// ─── LANE HELPERS ────────────────────────────────────────────────────────────
+const hasEopLane = () => !!S.eopDate;
+const getTopOffset = () => hasEopLane() ? ROH : 0;
+
+function dateToCol(date) {
+  if (!date) return -1;
+  const match = String(date).trim().match(/^(\d{4})-(\d{1,2})$/);
+  if (!match) return -1;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const yearIndex = S.years.indexOf(year);
+  if (yearIndex < 0 || month < 1 || month > 12) return -1;
+  return yearIndex * 12 + month - 1;
+}
+
+function ensureYearVisible(date) {
+  const match = String(date || '').trim().match(/^(\d{4})-(\d{1,2})$/);
+  if (!match) return;
+  const targetYear = Number(match[1]);
+  while (S.years[S.years.length - 1] < targetYear) S.years.push(S.years[S.years.length - 1] + 1);
+}
+
+function getBranchesForVariant(variantId) {
+  return S.branches.filter(b => b.variantId === variantId);
+}
+
+function getPlanLanes() {
+  return S.variants.flatMap(v => [
+    { type: 'plan', variantId: v.id, label: v.name },
+    ...getBranchesForVariant(v.id).map(b => ({ type: 'branch', branchId: b.id, variantId: v.id, label: b.label }))
+  ]);
+}
+
+function getActualLanes() {
+  return S.variants.flatMap(v => [
+    { type: 'actual', variantId: v.id, label: v.name },
+    ...getBranchesForVariant(v.id).map(b => ({ type: 'actualBranch', branchId: b.id, variantId: v.id, label: b.label }))
+  ]);
+}
+
+function findPlanLaneIndex(type, id) {
+  return getPlanLanes().findIndex(l => type === 'plan' ? l.variantId === id && l.type === 'plan' : l.branchId === id && l.type === 'branch');
+}
+
+function findActualLaneIndex(type, id) {
+  return getActualLanes().findIndex(l => type === 'actual' ? l.variantId === id && l.type === 'actual' : l.branchId === id && l.type === 'actualBranch');
+}
+
+const getPlannedH = () => getPlanLanes().length * ROH;
+const getActualH = () => getActualLanes().length * ROH;
+const getSidebarH = () => getTopOffset() + getPlannedH() + getActualH();
+const getGridGroupH = () => getTopOffset() + getPlannedH() + 4 + getActualH();
 const getPB = vid => S.branches.filter(b => b.variantId === vid);
 
 // DOM refs
@@ -31,7 +88,7 @@ const yearHeader = $('yearHeader'), monthHeader = $('monthHeader'), tlGrid = $('
 const sbRows = $('sbRows'), tlScroll = $('tlScroll');
 const nodePopup = $('nodePopup'), ctxMenu = $('ctxMenu');
 const modalOverlay = $('modalOverlay'), modalBody = $('modalBody'), modalTitle = $('modalTitle');
-let pendCell = null, dragNode = null, dox = 0, doy = 0, ctxId = null, ctxRowType = null, modalCb = null, dragVL = null, dvox = 0, dvoy = 0;
+let pendCell = null, dragNode = null, dox = 0, doy = 0, ctxId = null, ctxRowType = null, modalCb = null, dragVL = null, dvox = 0, dvoy = 0, dragRemark = null, drox = 0, droy = 0;
 
 // ─── SAMPLE DATA ─────────────────────────────────────────────────────────────
 function loadSample() {
@@ -87,6 +144,7 @@ function renderSidebar() {
     <div class="sr-cell loc" style="height:${totalH}px">${S.info.location || '—'}</div>
     <div class="sr-cell plant" style="height:${totalH}px">${S.info.plant || '—'}</div>
     <div class="sr-cell pa" style="height:${totalH}px;flex-direction:column;padding:0">
+      ${hasEopLane() ? `<div class="pa-eop-spacer" style="height:${getTopOffset()}px"></div>` : ''}
       <div class="pa-plan" style="height:${getPlannedH()}px">plan</div>
       <div class="pa-actual" style="height:${getActualH()}px">Actual</div>
     </div>`;
@@ -105,59 +163,67 @@ function renderGrid() {
     tlGrid.appendChild(h);
     return;
   }
+
   const grp = document.createElement('div');
   grp.className = 'grid-vr-grp';
   grp.style.position = 'relative';
   grp.style.height = getGridGroupH() + 'px';
   grp.dataset.vId = S.variants[0] ? S.variants[0].id : '';
 
-  // PLANNED SECTION: one sub-row per variant
-  S.variants.forEach((vr, vi) => {
-    const sr = makeSubRow(tc, vr.id, 'plan');
-    if (vi === 0) {
-      const pill = document.createElement('div');
-      pill.className = 'plan-pill';
-      pill.textContent = 'Planned';
-      pill.style.top = (ROH / 2 - 7) + 'px';
-      sr.appendChild(pill);
-    }
+  renderEopLane(grp, tc);
+
+  getPlanLanes().forEach(lane => {
+    const sr = lane.type === 'branch'
+      ? makeBranchSubRow(tc, lane.branchId, 'branch', lane.label)
+      : makeSubRow(tc, lane.variantId, 'plan');
     grp.appendChild(sr);
   });
 
-  // BRANCH ROWS: one sub-row per branch, tagged
-  S.branches.forEach(br => {
-    const bsr = makeBranchSubRow(tc, br.id);
-    const pill = document.createElement('div');
-    pill.className = 'branch-div-pill';
-    pill.textContent = '↳ ' + br.label;
-    bsr.appendChild(pill);
-    grp.appendChild(bsr);
-  });
-
-  // DIVIDER
   const dv = document.createElement('div');
   dv.className = 'pa-grid-div';
   dv.style.height = '4px';
   dv.style.background = 'var(--border2)';
   grp.appendChild(dv);
 
-  // ACTUAL SECTION: one sub-row per variant
-  S.variants.forEach((vr, vi) => {
-    const sr = makeSubRow(tc, vr.id, 'actual');
-    if (vi === 0) sr.classList.add('actual-first');
-    if (vi === 0) {
-      const pill = document.createElement('div');
-      pill.className = 'actual-pill';
-      pill.textContent = 'Actual';
-      pill.style.top = (ROH / 2 - 7) + 'px';
-      sr.appendChild(pill);
-    }
+  getActualLanes().forEach((lane, index) => {
+    const sr = lane.type === 'actualBranch'
+      ? makeBranchSubRow(tc, lane.branchId, 'actualBranch', lane.label)
+      : makeSubRow(tc, lane.variantId, 'actual');
+    if (index === 0) sr.classList.add('actual-first');
     grp.appendChild(sr);
   });
 
   tlGrid.appendChild(grp);
   drawLines();
   renderVariantLabels();
+  renderCanvasRemarks();
+}
+
+function renderEopLane(grp, tc) {
+  if (!hasEopLane()) return;
+  const row = document.createElement('div');
+  row.className = 'grid-sub-row eop-row';
+  row.style.height = ROH + 'px';
+  row.style.position = 'relative';
+  for (let col = 0; col < tc; col++) {
+    const c = document.createElement('div');
+    c.className = 'g-cell eop-cell';
+    row.appendChild(c);
+  }
+  grp.appendChild(row);
+  const col = dateToCol(S.eopDate);
+  if (col < 0) return;
+  const y = ROH / 2;
+  const x = col * COL + COL / 2;
+  const line = document.createElement('div');
+  line.className = 'eop-line';
+  line.style.cssText = `left:0;top:${y - 1}px;width:${x}px`;
+  row.appendChild(line);
+  const mark = document.createElement('div');
+  mark.className = 'eop-x';
+  mark.style.cssText = `left:${x - 8}px;top:${y - 12}px`;
+  mark.textContent = 'X';
+  row.appendChild(mark);
 }
 
 function makeSubRow(tc, vId, rType) {
@@ -174,17 +240,21 @@ function makeSubRow(tc, vId, rType) {
   return sr;
 }
 
-function makeBranchSubRow(tc, branchId) {
+function makeBranchSubRow(tc, branchId, rType = 'branch', label = '') {
   const sr = document.createElement('div');
-  sr.className = 'grid-sub-row branch-sub';
+  sr.className = 'grid-sub-row branch-sub' + (rType === 'actualBranch' ? ' actual-branch-sub' : '');
   sr.style.height = ROH + 'px'; sr.style.position = 'relative';
   for (let col = 0; col < tc; col++) {
     const c = document.createElement('div');
     c.className = 'g-cell';
-    c.dataset.col = col; c.dataset.branchId = branchId; c.dataset.rType = 'branch';
+    c.dataset.col = col; c.dataset.branchId = branchId; c.dataset.rType = rType;
     c.addEventListener('click', onCellClick);
     sr.appendChild(c);
   }
+  const pill = document.createElement('div');
+  pill.className = 'branch-div-pill' + (rType === 'actualBranch' ? ' actual-branch-pill' : '');
+  pill.textContent = '↳ ' + (label || 'Branch');
+  sr.appendChild(pill);
   return sr;
 }
 
@@ -194,34 +264,52 @@ function drawLines() {
   const grp = tlGrid.querySelector('.grid-vr-grp');
   if (!grp || !S.variants.length) return;
 
-  // PLANNED LINES: one line per variant across its plan nodes
-  S.variants.forEach((vr, vi) => {
+  // PLANNED LINES
+  S.variants.forEach(vr => {
+    const laneIdx = findPlanLaneIndex('plan', vr.id);
+    if (laneIdx < 0) return;
     const pn = S.planNodes.filter(n => n.variantId === vr.id).sort((a, b) => a.col - b.col);
-    const y = vi * ROH + ROH / 2;
+    const y = getTopOffset() + laneIdx * ROH + ROH / 2;
     for (let i = 0; i < pn.length - 1; i++)
       mkLine(grp, pn[i].col * COL + COL / 2, y, pn[i + 1].col * COL + COL / 2, y, '#2563eb');
   });
 
   // BRANCH LINES + FORK LINES
-  S.branches.forEach((br, bi) => {
-    const bY = (S.variants.length + bi) * ROH + ROH / 2;
+  S.branches.forEach(br => {
+    const branchLaneIdx = findPlanLaneIndex('branch', br.id);
+    if (branchLaneIdx < 0) return;
+    const bY = getTopOffset() + branchLaneIdx * ROH + ROH / 2;
     const parent = S.planNodes.find(n => n.id === br.parentNodeId);
     if (parent) {
-      const parentVrIdx = S.variants.findIndex(v => v.id === parent.variantId);
-      const fromY = parentVrIdx * ROH + ROH / 2;
-      mkLineV(grp, parent.col * COL + COL / 2, fromY, bY, '#00c9b1');
+      const parentLaneIdx = findPlanLaneIndex('plan', parent.variantId);
+      if (parentLaneIdx >= 0) {
+        const fromY = getTopOffset() + parentLaneIdx * ROH + ROH / 2;
+        mkLineV(grp, parent.col * COL + COL / 2, fromY, bY, '#00c9b1');
+      }
     }
     const bn = S.branchNodes.filter(n => n.branchId === br.id).sort((a, b) => a.col - b.col);
     for (let i = 0; i < bn.length - 1; i++)
       mkLine(grp, bn[i].col * COL + COL / 2, bY, bn[i + 1].col * COL + COL / 2, bY, '#00c9b1');
   });
 
-  // ACTUAL LINES: one line per variant across its actual nodes
-  S.variants.forEach((vr, vi) => {
+  // ACTUAL LINES
+  S.variants.forEach(vr => {
+    const laneIdx = findActualLaneIndex('actual', vr.id);
+    if (laneIdx < 0) return;
     const an = S.actualNodes.filter(n => n.variantId === vr.id).sort((a, b) => a.col - b.col);
-    const y = (S.variants.length + S.branches.length + vi) * ROH + ROH / 2;
+    const y = getTopOffset() + getPlannedH() + 4 + laneIdx * ROH + ROH / 2;
     for (let i = 0; i < an.length - 1; i++)
       mkLine(grp, an[i].col * COL + COL / 2, y, an[i + 1].col * COL + COL / 2, y, '#f97316');
+  });
+
+  // ACTUAL BRANCH LINES
+  S.branches.forEach(br => {
+    const laneIdx = findActualLaneIndex('branch', br.id);
+    if (laneIdx < 0) return;
+    const y = getTopOffset() + getPlannedH() + 4 + laneIdx * ROH + ROH / 2;
+    const nodes = S.actualBranchNodes.filter(n => n.branchId === br.id).sort((a, b) => a.col - b.col);
+    for (let i = 0; i < nodes.length - 1; i++)
+      mkLine(grp, nodes[i].col * COL + COL / 2, y, nodes[i + 1].col * COL + COL / 2, y, '#f97316');
   });
 }
 
@@ -244,29 +332,42 @@ function renderNodes() {
   const grp = tlGrid.querySelector('.grid-vr-grp');
   if (!grp) return;
 
-  // PLAN NODES: variant i → row i in Planned section
+  // PLAN NODES
   S.planNodes.forEach(n => {
-    const vrIdx = S.variants.findIndex(v => v.id === n.variantId);
-    const y = vrIdx * ROH + ROH / 2;
+    const laneIdx = findPlanLaneIndex('plan', n.variantId);
+    if (laneIdx < 0) return;
+    const y = getTopOffset() + laneIdx * ROH + ROH / 2;
     const el = mkNode(n, 'plan');
     el.style.cssText = `left:${n.col * COL + COL / 2 - 14}px;top:${y - 14}px`;
     grp.appendChild(el);
   });
 
-  // BRANCH NODES: branch bi → row (variants.length + bi) in Planned section
+  // BRANCH NODES
   S.branchNodes.forEach(n => {
-    const brIdx = S.branches.findIndex(b => b.id === n.branchId);
-    const y = (S.variants.length + brIdx) * ROH + ROH / 2;
+    const laneIdx = findPlanLaneIndex('branch', n.branchId);
+    if (laneIdx < 0) return;
+    const y = getTopOffset() + laneIdx * ROH + ROH / 2;
     const el = mkNode(n, 'branch');
     el.style.cssText = `left:${n.col * COL + COL / 2 - 14}px;top:${y - 14}px`;
     grp.appendChild(el);
   });
 
-  // ACTUAL NODES: variant i → row (variants.length + branches.length + i) in Actual section
+  // ACTUAL NODES
   S.actualNodes.forEach(n => {
-    const vrIdx = S.variants.findIndex(v => v.id === n.variantId);
-    const y = (S.variants.length + S.branches.length + vrIdx) * ROH + ROH / 2;
+    const laneIdx = findActualLaneIndex('actual', n.variantId);
+    if (laneIdx < 0) return;
+    const y = getTopOffset() + getPlannedH() + 4 + laneIdx * ROH + ROH / 2;
     const el = mkNode(n, 'actual');
+    el.style.cssText = `left:${n.col * COL + COL / 2 - 14}px;top:${y - 14}px`;
+    grp.appendChild(el);
+  });
+
+  // ACTUAL BRANCH NODES
+  S.actualBranchNodes.forEach(n => {
+    const laneIdx = findActualLaneIndex('branch', n.branchId);
+    if (laneIdx < 0) return;
+    const y = getTopOffset() + getPlannedH() + 4 + laneIdx * ROH + ROH / 2;
+    const el = mkNode(n, 'actualBranch');
     el.style.cssText = `left:${n.col * COL + COL / 2 - 14}px;top:${y - 14}px`;
     grp.appendChild(el);
   });
@@ -288,6 +389,7 @@ function mkNode(n, rType) {
     e.stopPropagation();
     if (rType === 'plan') S.planNodes = S.planNodes.filter(x => x.id !== n.id);
     else if (rType === 'branch') S.branchNodes = S.branchNodes.filter(x => x.id !== n.id);
+    else if (rType === 'actualBranch') S.actualBranchNodes = S.actualBranchNodes.filter(x => x.id !== n.id);
     else S.actualNodes = S.actualNodes.filter(x => x.id !== n.id);
     renderGrid(); renderNodes();
   });
@@ -305,17 +407,19 @@ function onCellClick(e) {
   nodePopup.style.cssText = `left:${r.left}px;top:${r.bottom + 4}px`;
   nodePopup.classList.add('active');
   $('npTop').value = ''; $('npBottom').value = ''; $('npDate').value = '';
+  $('npShape').value = $('nodeTypeSelect').value;
   $('npTop').focus();
 }
 $('npConfirm').addEventListener('click', () => {
   if (!pendCell) return;
   const { col, vId, rType, branchId } = pendCell;
   const nd = {
-    id: uid(), col, type: $('nodeTypeSelect').value,
+    id: uid(), col, type: $('npShape').value,
     topLabel: $('npTop').value.trim(), bottomLabel: $('npBottom').value.trim(), date: $('npDate').value
   };
   if (rType === 'plan') { nd.variantId = vId; S.planNodes.push(nd); }
   else if (rType === 'branch') { nd.branchId = branchId; S.branchNodes.push(nd); }
+  else if (rType === 'actualBranch') { nd.branchId = branchId; S.actualBranchNodes.push(nd); }
   else { nd.variantId = vId; S.actualNodes.push(nd); }
   nodePopup.classList.remove('active'); pendCell = null;
   renderGrid(); renderNodes();
@@ -334,7 +438,9 @@ $('ctxBranch').addEventListener('click', () => {
   const parent = S.planNodes.find(n => n.id === ctxId); if (!parent) return;
   openModal('New Branch', `<div class="form-group"><label>Branch Label</label><input id="f_bl" type="text" placeholder="e.g. Gas variant"/></div>`, () => {
     const label = $('f_bl').value.trim() || 'Branch';
-    S.branches.push({ id: uid(), variantId: parent.variantId, parentNodeId: ctxId, label });
+    const branch = { id: uid(), variantId: parent.variantId, parentNodeId: ctxId, label };
+    const insertAt = S.branches.reduce((idx, b, i) => b.variantId === parent.variantId ? i + 1 : idx, S.branches.length);
+    S.branches.splice(insertAt, 0, branch);
     renderAll();
   });
 });
@@ -343,6 +449,7 @@ $('ctxDelete').addEventListener('click', () => {
   if (!ctxId) return;
   if (ctxRowType === 'plan') S.planNodes = S.planNodes.filter(n => n.id !== ctxId);
   else if (ctxRowType === 'branch') S.branchNodes = S.branchNodes.filter(n => n.id !== ctxId);
+  else if (ctxRowType === 'actualBranch') S.actualBranchNodes = S.actualBranchNodes.filter(n => n.id !== ctxId);
   else S.actualNodes = S.actualNodes.filter(n => n.id !== ctxId);
   renderGrid(); renderNodes(); ctxId = null;
 });
@@ -366,6 +473,7 @@ window.deleteVariant = id => {
   const bids = S.branches.filter(b => b.variantId === id).map(b => b.id);
   S.branches = S.branches.filter(b => b.variantId !== id);
   S.branchNodes = S.branchNodes.filter(n => !bids.includes(n.branchId));
+  S.actualBranchNodes = S.actualBranchNodes.filter(n => !bids.includes(n.branchId));
   renderAll();
 };
 
@@ -420,35 +528,42 @@ $('addMsRowBtn').addEventListener('click', () => { S.leftTable.rows.push(Array(S
 $('addMsColBtn').addEventListener('click', () => { S.leftTable.cols.push('New Col'); S.leftTable.rows.forEach(r => r.push('')); renderBottomTables(); });
 $('addEopRowBtn').addEventListener('click', () => { S.rightTable.rows.push(Array(S.rightTable.cols.length).fill('')); renderBottomTables(); });
 $('addEopColBtn').addEventListener('click', () => { S.rightTable.cols.push('New Col'); S.rightTable.rows.forEach(r => r.push('')); renderBottomTables(); });
-$('remarksBox').addEventListener('input', () => { S.remarks = $('remarksBox').textContent.trim(); });
+$('remarksBox').addEventListener('input', () => {
+  S.remarks = $('remarksBox').textContent.trim();
+  renderCanvasRemarks();
+});
 
 // ─── VARIANT FLOATING LABELS ────────────────────────────────────────────────
 function renderVariantLabels() {
   tlGrid.querySelectorAll('.vr-float-label').forEach(e => e.remove());
-  S.variants.forEach((vr, vi) => {
-    const el = document.createElement('div');
-    el.className = 'vr-float-label';
-    el.dataset.vrId = vr.id;
-    const defaultY = vi * ROH + ROH / 2 - 7;
-    const lx = vr._lx !== undefined ? vr._lx : 50;
-    const ly = vr._ly !== undefined ? vr._ly : defaultY;
-    el.style.cssText = `left:${lx}px;top:${ly}px`;
-    el.innerHTML = `${vr.name}<button class="vfl-del" onclick="event.stopPropagation();deleteVariant('${vr.id}')">×</button>`;
-    el.addEventListener('mousedown', startVLabelDrag);
-    tlGrid.appendChild(el);
+  getPlanLanes().forEach((lane, laneIdx) => {
+    if (lane.type !== 'plan') return;
+    addVariantLabel(`plan:${lane.variantId}`, lane.variantId, lane.label, 50, getTopOffset() + laneIdx * ROH + ROH / 2 - 7, 'plan');
+  });
+  getActualLanes().forEach((lane, laneIdx) => {
+    if (lane.type !== 'actual') return;
+    addVariantLabel(`actual:${lane.variantId}`, lane.variantId, lane.label, 50, getTopOffset() + getPlannedH() + 4 + laneIdx * ROH + ROH / 2 - 7, 'actual');
   });
 }
+
+function addVariantLabel(key, variantId, text, defaultX, defaultY, mode) {
+  const el = document.createElement('div');
+  el.className = 'vr-float-label ' + (mode === 'actual' ? 'actual-vr-label' : 'plan-vr-label');
+  el.dataset.labelKey = key;
+  el.dataset.vrId = variantId;
+  const pos = S.labelPositions[key] || { x: defaultX, y: defaultY };
+  el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
+  el.innerHTML = `${text}<button class="vfl-del" onclick="event.stopPropagation();deleteVariant('${variantId}')">×</button>`;
+  el.addEventListener('mousedown', startVLabelDrag);
+  tlGrid.appendChild(el);
+}
+
 function startVLabelDrag(e) {
   if (e.target.classList.contains('vfl-del')) return;
   e.preventDefault();
   dragVL = e.currentTarget;
-  const r = dragVL.getBoundingClientRect(), gr = tlGrid.getBoundingClientRect();
+  const r = dragVL.getBoundingClientRect();
   dvox = e.clientX - r.left; dvoy = e.clientY - r.top;
-  const vr = S.variants.find(v => v.id === dragVL.dataset.vrId);
-  if (vr && vr._lx !== undefined) {
-    dragVL.style.left = vr._lx + 'px';
-    dragVL.style.top = vr._ly + 'px';
-  }
   dragVL.style.zIndex = '20';
   document.addEventListener('mousemove', onVLMove);
   document.addEventListener('mouseup', onVLUp);
@@ -462,16 +577,61 @@ function onVLMove(e) {
 function onVLUp(e) {
   if (!dragVL) return;
   const gr = tlGrid.getBoundingClientRect();
-  const vr = S.variants.find(v => v.id === dragVL.dataset.vrId);
-  if (vr) {
-    if (vr._lx === undefined) vr._lx = 50;
-    if (vr._ly === undefined) vr._ly = 0;
-    vr._lx = e.clientX - gr.left - dvox;
-    vr._ly = e.clientY - gr.top - dvoy;
+  const key = dragVL.dataset.labelKey;
+  if (key) {
+    S.labelPositions[key] = {
+      x: e.clientX - gr.left - dvox,
+      y: e.clientY - gr.top - dvoy
+    };
   }
   dragVL.style.zIndex = '6'; dragVL = null;
   document.removeEventListener('mousemove', onVLMove);
   document.removeEventListener('mouseup', onVLUp);
+}
+
+// ─── CANVAS REMARKS ─────────────────────────────────────────────────────────
+function renderCanvasRemarks() {
+  tlGrid.querySelectorAll('.canvas-remark').forEach(e => e.remove());
+  if (!S.remarks) return;
+  const el = document.createElement('div');
+  el.className = 'canvas-remark';
+  const defaultY = getTopOffset() + getPlannedH() + 4 + ROH / 2 + 18;
+  const pos = S.remarkPosition || { x: 120, y: defaultY };
+  el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
+  el.textContent = S.remarks;
+  el.addEventListener('mousedown', startRemarkDrag);
+  tlGrid.appendChild(el);
+}
+
+function startRemarkDrag(e) {
+  e.preventDefault();
+  dragRemark = e.currentTarget;
+  const r = dragRemark.getBoundingClientRect();
+  drox = e.clientX - r.left;
+  droy = e.clientY - r.top;
+  dragRemark.style.zIndex = '25';
+  document.addEventListener('mousemove', onRemarkMove);
+  document.addEventListener('mouseup', onRemarkUp);
+}
+
+function onRemarkMove(e) {
+  if (!dragRemark) return;
+  const gr = tlGrid.getBoundingClientRect();
+  dragRemark.style.left = (e.clientX - gr.left - drox) + 'px';
+  dragRemark.style.top = (e.clientY - gr.top - droy) + 'px';
+}
+
+function onRemarkUp(e) {
+  if (!dragRemark) return;
+  const gr = tlGrid.getBoundingClientRect();
+  S.remarkPosition = {
+    x: e.clientX - gr.left - drox,
+    y: e.clientY - gr.top - droy
+  };
+  dragRemark.style.zIndex = '7';
+  dragRemark = null;
+  document.removeEventListener('mousemove', onRemarkMove);
+  document.removeEventListener('mouseup', onRemarkUp);
 }
 
 // ─── HEADER FORM ─────────────────────────────────────────────────────────────
@@ -520,7 +680,13 @@ function onNodeUp(e) {
   const grp = dragNode.closest('.grid-vr-grp');
   const gr = grp.getBoundingClientRect();
   const nid = dragNode.dataset.nodeId, rType = dragNode.dataset.rType;
-  const arr = rType === 'plan' ? S.planNodes : rType === 'branch' ? S.branchNodes : S.actualNodes;
+  const arr = rType === 'plan'
+    ? S.planNodes
+    : rType === 'branch'
+      ? S.branchNodes
+      : rType === 'actualBranch'
+        ? S.actualBranchNodes
+        : S.actualNodes;
   const node = arr.find(n => n.id === nid);
   if (node) node.col = Math.max(0, Math.min(Math.round((e.clientX - gr.left - dox + 14) / COL), totalCols() - 1));
   dragNode.style.opacity = '1'; dragNode.style.zIndex = '5';
@@ -560,18 +726,48 @@ $('themeToggleBtn').addEventListener('click', () => {
   $('themeToggleBtn').textContent = isDark ? '🌙' : '☀️';
 });
 
+// ─── ADD YEAR ────────────────────────────────────────────────────────────────
+$('addYearBtn').addEventListener('click', () => {
+  S.years.push(S.years[S.years.length - 1] + 1);
+  renderAll();
+});
+
 // ─── SUBMIT / BACK ───────────────────────────────────────────────────────────
+function parseEopDate() {
+  const row = S.rightTable.rows[0] || [];
+  const raw = (row[1] || '').trim();
+  if (/^\d{4}-\d{2}$/.test(raw)) return raw;
+
+  const monthYear = raw.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})$/i);
+  if (monthYear) {
+    const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+    const month = months.indexOf(monthYear[1].slice(0, 3).toLowerCase()) + 1;
+    return `${monthYear[2]}-${String(month).padStart(2, '0')}`;
+  }
+
+  const slash = raw.match(/^(\d{1,2})\/(\d{4})$/);
+  if (slash) return `${slash[2]}-${String(Number(slash[1])).padStart(2, '0')}`;
+
+  return '';
+}
+
 $('submitBtn').addEventListener('click', () => {
+  const eopDate = parseEopDate();
+  if (!eopDate) {
+    alert('Enter EOP date in Date- month/year as YYYY-MM, Mon YYYY, or MM/YYYY.');
+    return;
+  }
+  ensureYearVisible(eopDate);
+  S.eopDate = eopDate;
   console.log('State:', JSON.stringify(S, null, 2));
-  alert('Submitted! Check console for full state.');
+  renderAll();
 });
 $('backBtn').addEventListener('click', () => { if (confirm('Go back? Unsaved changes will be lost.')) history.back(); });
 
 // ─── PDF EXPORT ──────────────────────────────────────────────────────────────
-$('exportBtn').addEventListener('click', () => exportPDF('a3'));
-$('pdfA3Btn').addEventListener('click', () => exportPDF('a3'));
-$('pdfA1Btn').addEventListener('click', () => exportPDF('a1'));
-async function exportPDF(fmt) {
+$('exportBtn').addEventListener('click', exportPDF);
+$('pdfA4Btn').addEventListener('click', exportPDF);
+async function exportPDF() {
   const overlay = $('pdfOverlay'), st = $('pdfStatus');
   overlay.classList.add('active'); st.textContent = 'Capturing…';
   const app = document.querySelector('.app');
@@ -589,14 +785,13 @@ async function exportPDF(fmt) {
     });
     st.textContent = 'Building PDF…';
     const { jsPDF } = window.jspdf;
-    const dims = fmt === 'a1' ? [841, 594] : [420, 297];
-    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: dims });
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const pW = pdf.internal.pageSize.getWidth(), pH = pdf.internal.pageSize.getHeight(), mg = 8;
     const maxW = pW - mg * 2, maxH = pH - mg * 2;
     const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
     const iW = canvas.width * ratio, iH = canvas.height * ratio;
     pdf.addImage(canvas.toDataURL('image/jpeg', .95), 'JPEG', mg + (maxW - iW) / 2, mg + (maxH - iH) / 2, iW, iH);
-    pdf.save(`${S.info.project || 'timeline'}_${fmt.toUpperCase()}.pdf`);
+    pdf.save(`${S.info.project || 'timeline'}_A4.pdf`);
     st.textContent = 'Done!'; setTimeout(() => overlay.classList.remove('active'), 700);
   } catch (err) { st.textContent = 'Error: ' + err.message; setTimeout(() => overlay.classList.remove('active'), 2500); }
   finally {
@@ -618,8 +813,14 @@ $('modalOverlay').addEventListener('click', e => { if (e.target === $('modalOver
 function closeModal() { modalOverlay.classList.remove('active'); modalCb = null; }
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
+function fillShapeSelect(selectEl) {
+  selectEl.innerHTML = NODE_SHAPES.map(shape => `<option value="${shape.value}">${shape.label}</option>`).join('');
+}
+
 loadSample();
 bindHeader();
+fillShapeSelect($('nodeTypeSelect'));
+fillShapeSelect($('npShape'));
 renderAll();
 syncScroll();
 setupResize();

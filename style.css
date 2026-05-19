@@ -419,6 +419,12 @@ body {
   color: var(--actual)
 }
 
+.pa-eop-spacer {
+  flex: none;
+  border-bottom: 2px solid rgba(232, 64, 64, .25);
+  background: rgba(232, 64, 64, .035);
+}
+
 .sr-divider {
   height: 4px;
   background: var(--border2);
@@ -522,37 +528,7 @@ body {
   opacity: 1;
 }
 
-/* Plan pill in timeline grid */
-.plan-pill {
-  position: absolute;
-  left: 8px;
-  z-index: 3;
-  pointer-events: none;
-  background: rgba(37, 99, 235, .12) !important;
-  border: 1px solid rgba(37, 99, 235, .35) !important;
-  color: var(--plan) !important;
-  font-size: 9px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 10px;
-  white-space: nowrap;
-}
-
-/* Actual pill in timeline grid */
-.actual-pill {
-  position: absolute;
-  left: 8px;
-  z-index: 3;
-  pointer-events: none;
-  background: rgba(249, 115, 22, .12) !important;
-  border: 1px solid rgba(249, 115, 22, .35) !important;
-  color: var(--actual) !important;
-  font-size: 9px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 10px;
-  white-space: nowrap;
-}
+/* Plan/actual pills removed - labels handled by floating variant labels */
 
 .sidebar-resize-handle {
   position: absolute;
@@ -814,6 +790,45 @@ body {
   padding: 2px 8px;
   border-radius: 10px;
   white-space: nowrap;
+}
+
+.actual-branch-sub {
+  background: rgba(249, 115, 22, .035);
+  border-bottom: 1px dashed rgba(249, 115, 22, .28);
+}
+
+.actual-branch-pill {
+  background: rgba(249, 115, 22, .12);
+  border-color: rgba(249, 115, 22, .35);
+  color: var(--actual);
+}
+
+/* ── EOP LANE ── */
+.eop-row {
+  background: rgba(232, 64, 64, .035);
+  border-bottom: 2px solid rgba(232, 64, 64, .25);
+}
+
+.eop-cell {
+  cursor: default;
+}
+
+.eop-line {
+  position: absolute;
+  height: 0;
+  border-top: 2px dashed #e84040;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.eop-x {
+  position: absolute;
+  z-index: 5;
+  color: #e84040;
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .branch-tag {
@@ -1131,6 +1146,38 @@ body {
   opacity: 1
 }
 
+.actual-vr-label {
+  background: linear-gradient(135deg, rgba(249, 115, 22, .18), rgba(249, 115, 22, .08));
+  border-color: rgba(249, 115, 22, .45);
+  color: var(--actual);
+  box-shadow: 0 2px 10px rgba(249, 115, 22, .15);
+}
+
+.actual-vr-label .vfl-del {
+  color: var(--actual);
+}
+
+/* ── CANVAS REMARKS ── */
+.canvas-remark {
+  position: absolute;
+  z-index: 7;
+  max-width: 260px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(37, 99, 235, .35);
+  background: rgba(255, 255, 255, .88);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, .12);
+  cursor: move;
+  user-select: none;
+}
+
+[data-theme="dark"] .canvas-remark {
+  background: rgba(22, 27, 34, .9);
+}
+
 /* ── POPUP ── */
 .popup {
   display: none;
@@ -1157,7 +1204,8 @@ body {
   color: var(--text)
 }
 
-.popup input {
+.popup input,
+.popup select {
   padding: 7px 10px;
   border-radius: 7px;
   border: 1px solid var(--border);
@@ -1168,8 +1216,17 @@ body {
   outline: none;
 }
 
-.popup input:focus {
+.popup input:focus,
+.popup select:focus {
   border-color: var(--accent)
+}
+
+.popup-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .5px;
 }
 
 input[type="month"] {
