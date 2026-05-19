@@ -54,6 +54,13 @@ Alternate key:
 
 - `pt_externalid`
 
+Example `Project` rows:
+
+| pt_name | pt_externalid | pt_location | pt_plant | pt_projecttype | pt_status | pt_published | pt_eopdate | pt_yearsjson | pt_remarks | pt_milestonetablejson | pt_eoptablejson | pt_layoutjson | pt_lastsubmittedon |
+|---|---|---|---|---|---|---:|---|---|---|---|---|---|---|
+| Swift Facelift 2024 | local-1716100000000 | SMG | Plant-C | MC | Delayed | No | 2025-03-01 | `[2024,2025]` | Review EOP risk monthly | `{"cols":["Milestone","DOM Gas","DOM CNG"],"rows":[["DA","2024-06","2024-07"],["SOS","2024-10","2024-11"]]}` | `{"cols":["Model Detail","Date- month/year"],"rows":[["EOP","Mar 2025"]]}` | `{"labelPositions":{"plan:v1":{"x":50,"y":38}},"remarkPosition":{"x":120,"y":292},"nid":50}` | 2026-05-19 10:30 |
+| Compact SUV Refresh | local-1716200000000 | Pune | Plant-A | FMC | On Track | Yes | 2026-08-01 | `[2025,2026]` | Published baseline | `{"cols":["Milestone","EV"],"rows":[["Kickoff","2025-04"]]}` | `{"cols":["Model Detail","Date- month/year"],"rows":[["EOP","Aug 2026"]]}` | `{"labelPositions":{},"remarkPosition":null,"nid":12}` | 2026-05-19 11:00 |
+
 ## Table: Project Variant
 
 Display name: `Project Variant`
@@ -78,6 +85,14 @@ Relationship:
 
 - `Project` 1:N `Project Variant`
 - Delete behavior: cascade/delete child variants when project is deleted.
+
+Example `Project Variant` rows:
+
+| pt_name | pt_externalid | pt_projectid | pt_displayorder | pt_projectvariantkey |
+|---|---|---|---:|---|
+| DOM Gas | v1 | Project: Swift Facelift 2024 | 0 | local-1716100000000:v1 |
+| DOM CNG | v2 | Project: Swift Facelift 2024 | 1 | local-1716100000000:v2 |
+| EV | v3 | Project: Compact SUV Refresh | 0 | local-1716200000000:v3 |
 
 ## Table: Timeline Branch
 
@@ -107,6 +122,13 @@ Relationships:
 - `Project Variant` 1:N `Timeline Branch`
 - `Project` 1:N `Timeline Branch`
 - `Timeline Stage` 1:N `Timeline Branch` through `pt_parentstageid`
+
+Example `Timeline Branch` rows:
+
+| pt_name | pt_externalid | pt_projectid | pt_variantid | pt_parentstageexternalid | pt_parentstageid | pt_displayorder | pt_branchkey |
+|---|---|---|---|---|---|---:|---|
+| Gas variant branch | b1 | Project: Swift Facelift 2024 | Variant: DOM Gas | p1 | Stage: DA Plan | 0 | local-1716100000000:b1 |
+| CNG delay recovery | b2 | Project: Swift Facelift 2024 | Variant: DOM CNG | p3 | Stage: DA Plan CNG | 1 | local-1716100000000:b2 |
 
 ## Table: Timeline Stage
 
@@ -148,6 +170,17 @@ Validation handled by app logic:
 - If `Stage Context` is Plan or Actual, `Variant` should be populated.
 - If `Stage Context` is Branch Plan or Branch Actual, `Branch` should be populated.
 
+Example `Timeline Stage` rows:
+
+| pt_name | pt_externalid | pt_projectid | pt_variantid | pt_branchid | pt_stagecontext | pt_month | pt_monthtext | pt_columnindex | pt_shape | pt_toplabel | pt_bottomlabel | pt_displayorder | pt_stagekey |
+|---|---|---|---|---|---|---|---|---:|---|---|---|---:|---|
+| DA Plan | p1 | Project: Swift Facelift 2024 | Variant: DOM Gas |  | Plan | 2024-06-01 | 2024-06 | 5 | Square | DA |  | 0 | local-1716100000000:p1 |
+| SOS Plan | p2 | Project: Swift Facelift 2024 | Variant: DOM Gas |  | Plan | 2024-10-01 | 2024-10 | 9 | Square | SOS |  | 1 | local-1716100000000:p2 |
+| DA Plan CNG | p3 | Project: Swift Facelift 2024 | Variant: DOM CNG |  | Plan | 2024-07-01 | 2024-07 | 6 | Square | DA |  | 2 | local-1716100000000:p3 |
+| DA Actual | a1 | Project: Swift Facelift 2024 | Variant: DOM Gas |  | Actual | 2024-07-01 | 2024-07 | 6 | Square | DA | Actual | 0 | local-1716100000000:a1 |
+| Trial Branch Stage | bp1 | Project: Swift Facelift 2024 |  | Branch: Gas variant branch | Branch Plan | 2024-08-01 | 2024-08 | 7 | Circle | Trial |  | 0 | local-1716100000000:bp1 |
+| Trial Actual Branch Stage | abp1 | Project: Swift Facelift 2024 |  | Branch: Gas variant branch | Branch Actual | 2024-09-01 | 2024-09 | 8 | Circle | Trial | Actual | 0 | local-1716100000000:abp1 |
+
 ## Table: Branch Merge Link
 
 Display name: `Branch Merge Link`
@@ -178,6 +211,13 @@ Relationships:
 - `Timeline Branch` 1:N `Branch Merge Link`
 - `Timeline Stage` 1:N `Branch Merge Link` for source stage
 - `Timeline Stage` 1:N `Branch Merge Link` for target stage
+
+Example `Branch Merge Link` rows:
+
+| pt_name | pt_externalid | pt_projectid | pt_branchid | pt_sourcestageid | pt_targetstageid | pt_sourcestageexternalid | pt_targetstageexternalid | pt_mergelinkkey |
+|---|---|---|---|---|---|---|---|---|
+| Gas branch merges to SOS | m1 | Project: Swift Facelift 2024 | Branch: Gas variant branch | Stage: Trial Branch Stage | Stage: SOS Plan | bp1 | p2 | local-1716100000000:m1 |
+| CNG branch merges to DA | m2 | Project: Swift Facelift 2024 | Branch: CNG delay recovery | Stage: CNG Recovery Stage | Stage: DA Plan CNG | bp2 | p3 | local-1716100000000:m2 |
 
 ## Submit Sync Order
 

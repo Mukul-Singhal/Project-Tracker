@@ -26,6 +26,11 @@
           <div class="mh-fg"><label>Plant</label><input id="fPlant" placeholder="Plant" /></div>
         </div>
         <div class="mh-right">
+          <div class="draft-status" id="draftStatus" hidden>
+            <span class="draft-dot"></span>
+            <span id="draftStatusText">Draft changes</span>
+            <button class="draft-revert" id="revertDraftBtn" type="button">Revert</button>
+          </div>
           <button class="tbtn accent" id="exportBtn">⬇ Export</button>
           <div class="publish-wrap">
             <span class="pub-lbl">Publish Status</span>
@@ -140,6 +145,7 @@
   <!-- Context Menu -->
   <div class="ctx-menu" id="ctxMenu">
     <button class="ctx-item" id="ctxBranch">🌿 New Branch from here</button>
+    <button class="ctx-item" id="ctxMerge">Merge to parent</button>
     <button class="ctx-item danger" id="ctxDelete">🗑 Delete Stage</button>
   </div>
 
@@ -164,6 +170,7 @@
     <span id="pdfStatus">Generating PDF…</span>
   </div>
 
+  <script src="persistence-core.js"></script>
   <script src="app.js"></script>
 </body>
 
