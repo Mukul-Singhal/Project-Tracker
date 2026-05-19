@@ -152,6 +152,8 @@ Primary name column: `pt_name`
 | Shape | `pt_shape` | Choice `pt_stageshape` | No | Square/Circle |
 | Top Label | `pt_toplabel` | Text | No | Example: DA |
 | Bottom Label | `pt_bottomlabel` | Text | No | Optional |
+| DRS Available | `pt_isdrs` | Yes/No | No | Whether DRS is available for this stage |
+| DRS Detail | `pt_drsdetail` | Multiple lines of text | No | Optional DRS notes/details |
 | Display Order | `pt_displayorder` | Whole number | No | Stable ordering |
 
 Alternate key:
@@ -169,6 +171,7 @@ Validation handled by app logic:
 
 - If `Stage Context` is Plan or Actual, `Variant` should be populated.
 - If `Stage Context` is Branch Plan or Branch Actual, `Branch` should be populated.
+- Stage payload fields `is_drs` and `drs_detail` should map to `pt_isdrs` and `pt_drsdetail`.
 
 Example `Timeline Stage` rows:
 

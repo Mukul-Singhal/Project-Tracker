@@ -27,6 +27,16 @@ function stableStringify(value) {
   return JSON.stringify(sortVal(value));
 }
 
+function escapeHtml(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, ch => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[ch]));
+}
+
 // ════════════════════════════════════════════════════════════════
 // § 2  STORE  ─  Zustand-style reactive store
 // ════════════════════════════════════════════════════════════════
@@ -649,10 +659,10 @@ function renderSidebar(state) {
   row.innerHTML = `
     <div class="sr-cell sno" style="height:${totalH}px">1</div>
     <div class="sr-cell proj" style="height:${totalH}px">
-      <span class="vr-name">${state.info.project || '—'}</span>
+      <span class="vr-name">${escapeHtml(state.info.project || '—')}</span>
     </div>
-    <div class="sr-cell loc" style="height:${totalH}px">${state.info.location || '—'}</div>
-    <div class="sr-cell plant" style="height:${totalH}px">${state.info.plant || '—'}</div>
+    <div class="sr-cell loc" style="height:${totalH}px">${escapeHtml(state.info.location || '—')}</div>
+    <div class="sr-cell plant" style="height:${totalH}px">${escapeHtml(state.info.plant || '—')}</div>
     <div class="sr-cell pa" style="height:${totalH}px;flex-direction:column;padding:0">
       ${hasEopLane(state) ? `<div class="pa-eop-spacer" style="height:${getTopOffset(state)}px"></div>` : ''}
       <div class="pa-plan" style="height:${getPlannedH(state)}px">plan</div>
@@ -957,10 +967,11 @@ function mkNode(n, rType) {
 
   const dh = n.date ? `<span class="node-date">${fmtDate(n.date)}</span>` : '';
   const drsIndicator = n.isDRS ? '<span class="node-drs-badge" title="DRS Available">DRS</span>' : '';
+  const shape = n.type === 'circle' ? 'circle' : 'square';
   el.innerHTML = `
-    <span class="node-label-top">${n.topLabel || ''}</span>
-    <div class="node-shape ${n.type}"></div>
-    <span class="node-label-bottom">${n.bottomLabel || ''}</span>
+    <span class="node-label-top">${escapeHtml(n.topLabel || '')}</span>
+    <div class="node-shape ${shape}"></div>
+    <span class="node-label-bottom">${escapeHtml(n.bottomLabel || '')}</span>
     ${dh}${drsIndicator}<button class="node-del">✕</button>`;
 
   el.querySelector('.node-del').addEventListener('click', e => {
@@ -1088,7 +1099,15 @@ function addVariantLabel(key, variantId, text, defaultX, defaultY, mode, state) 
   el.dataset.vrId = variantId;
   const pos = state.labelPositions[key] || { x: defaultX, y: defaultY };
   el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
-  el.innerHTML = `${text}<button class="vfl-del" onclick="event.stopPropagation();window.deleteVariant('${variantId}')">×</button>`;
+  el.textContent = text || '';
+  const del = document.createElement('button');
+  del.className = 'vfl-del';
+  del.textContent = '×';
+  del.addEventListener('click', event => {
+    event.stopPropagation();
+    window.deleteVariant(variantId);
+  });
+  el.appendChild(del);
   el.addEventListener('mousedown', startVLabelDrag);
   tlGrid.appendChild(el);
 }

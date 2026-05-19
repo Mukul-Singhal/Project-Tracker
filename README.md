@@ -1,6 +1,6 @@
 # Model Timeline Planner
 
-A single-page web application for planning and tracking automotive project model timelines. Visualises plan vs. actual stages on a scrollable month-column grid, with variant lanes, branches, merge links, and EOP tracking. Built for Microsoft Power Pages — zero dependencies, single JS file, no build step.
+A single-page web application for planning and tracking automotive project model timelines. Visualises plan vs. actual stages on a scrollable month-column grid, with variant lanes, branches, merge links, and EOP tracking. Built for Microsoft Power Pages / Power Apps deployment with one application JavaScript file (`app.js`) and no build step. PDF export uses the two CDN scripts declared in `index.html`.
 
 ---
 
@@ -9,19 +9,19 @@ A single-page web application for planning and tracking automotive project model
 The codebase is one file (`app.js`) divided into seven clearly delimited sections:
 
 ```
-§1  CONSTANTS + CORE UTILITIES   — COL, ROH, $, fmtDate, cloneState, stableStringify
+§1  CONSTANTS + CORE UTILITIES   — COL, ROH, $, fmtDate, cloneState, stableStringify, escapeHtml
 §2  STORE                        — Zustand-style reactive store: createStore + appStore
 §3  DOMAIN                       — Pure functions: lane layout, grid math, EOP parsing
 §4  PERSISTENCE                  — localStorage draft/baseline, Dataverse payload builder
-§5  RENDERERS                    — DOM writers that receive state and never mutate it
-§6  EVENTS                       — Event handlers that call store actions
-§7  BOOTSTRAP                    — Wire store subscriber, init persistence, bind, render
+§5  RENDERERS                    — DOM writers that receive state and wire element callbacks
+§6  EVENTS                       — Event handlers and element callbacks that call store actions
+§7  BOOTSTRAP                    — Wire draft-save subscriber, init persistence, bind, render
 ```
 
 **Key rules:**
 - State mutations happen **only through store actions** (`set()` in the store)
-- Renderers are **pure DOM writers** — they receive `state`, write DOM, never call `set()`
-- Event handlers are the **only callers of store actions**
+- Renderers receive `state` and write DOM; mutations happen later through event callbacks
+- Event handlers and renderer-created element callbacks are the **only callers of store actions**
 - Transient UI state (`mergePick`, drag offsets, `pendCell`) lives as module-level variables — not persisted, not in the store
 
 ---
@@ -32,7 +32,7 @@ The codebase is one file (`app.js`) divided into seven clearly delimited section
 flowchart TD
     U([User interaction]) --> EV[§6 Events]
     EV -->|calls store action| ST[§2 Store\nset partial state]
-    ST -->|shallow merge| STATE[(App State\nIMMUTABLE SNAPSHOT)]
+    ST -->|shallow merge| STATE[(Current App State)]
     STATE -->|notifies subscriber| SUB{Store subscriber}
     SUB -->|scheduleDraftSave| PS[§4 Persistence\nlocalStorage draft]
     EV -->|explicit renderX call| RN[§5 Renderers]
@@ -160,14 +160,20 @@ Captures the full `.app` element via `html2canvas` and exports as A4 landscape P
 ### Draft Persistence
 All changes auto-save to `localStorage` within 80ms. The header shows a "Draft changes" indicator when the draft differs from the last submitted baseline.
 
+### Text Rendering Safety
+User-entered labels and project metadata are rendered as text, not parsed HTML. `escapeHtml()` protects template-based renderers, and variant labels are created with DOM text nodes.
+
 ---
 
-## Deployment (Power Pages)
+## Deployment (Power Pages / Power Apps)
 
-1. Upload `app.js`, `style.css`, `index.html` as web files in Power Pages Studio
-2. No build step, no npm, no dependencies beyond the CDN scripts in `index.html` (`html2canvas`, `jsPDF`)
-3. For live Dataverse sync, implement `window.ProjectTrackerDataverse.saveProject({ projectId, delta, payload })` in a separate Power Pages script
-4. Without that bridge, the app saves a Dataverse-formatted payload to `localStorage` for development inspection
+1. Upload `app.js`, `style.css`, and `index.html` as web files in Power Pages Studio
+2. Keep all application logic in `app.js`; do not upload `tests/` or `docs/` as app runtime files
+3. No build step and no npm install are required; PDF export depends on the CDN scripts in `index.html` (`html2canvas`, `jsPDF`)
+4. For live Dataverse sync, implement `window.ProjectTrackerDataverse.saveProject({ projectId, delta, payload })` in a separate Power Pages script or web template
+5. Without that bridge, the app saves a Dataverse-formatted payload to `localStorage` for development inspection
+
+The only JavaScript file required for the app itself is `app.js`.
 
 ---
 
@@ -175,9 +181,11 @@ All changes auto-save to `localStorage` within 80ms. The header shows a "Draft c
 
 ```
 Project-Tracker/
-  app.js                         — Complete application (§1–§7)
+  app.js                         — Complete browser application logic (§1–§7)
   index.html                     — HTML shell + CDN scripts
   style.css                      — All styles (CSS custom properties, light/dark theme)
+  tests/
+    persistence.test.js          — Reads app.js and tests persistence/Dataverse behavior
   docs/
     database/
       dataverse-schema.md        — Dataverse table schema reference
