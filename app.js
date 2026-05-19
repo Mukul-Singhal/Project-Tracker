@@ -1,5 +1,6 @@
 // ─── STATE ───────────────────────────────────────────────────────────────────
 const S = {
+  projectId: '',
   info: { project: 'Swift Facelift 2024', location: 'SMG', plant: 'Plant-C', type: 'MC', status: 'Delayed', published: false },
   variants: [],      // [{id,name}]
   planNodes: [],     // [{id,variantId,col,type,topLabel,bottomLabel,date}]
@@ -7,6 +8,7 @@ const S = {
   branches: [],      // [{id,variantId,parentNodeId,label}]
   branchNodes: [],   // [{id,branchId,col,type,topLabel,bottomLabel,date}]
   actualBranchNodes: [],
+  mergeLinks: [],    // [{id,fromNodeId,fromBranchId,toNodeId}]
   leftTable: { cols: ['Milestone', 'DOM Gas', 'DOM CNG'], rows: [['DA', '', ''], ['SOS', '', '']] },
   rightTable: { cols: ['Model Detail', 'Date- month/year'], rows: [['', '']] },
   remarks: '',
@@ -24,6 +26,7 @@ const NODE_SHAPES = [
 
 const COL = 52, ROH = 90, YH = 34, MH = 30;
 const $ = id => document.getElementById(id);
+const P = window.ProjectTrackerPersistence;
 const uid = () => 'i' + (S.nid++);
 const fmtDate = d => { if (!d) return ''; const [y, m] = d.split('-'); return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+m - 1] + ' ' + y };
 const totalCols = () => S.years.length * 12;
@@ -79,7 +82,8 @@ function findActualLaneIndex(type, id) {
 
 const getPlannedH = () => getPlanLanes().length * ROH;
 const getActualH = () => getActualLanes().length * ROH;
-const getSidebarH = () => getTopOffset() + getPlannedH() + getActualH();
+const getDividerH = () => S.variants.length ? 4 : 0;
+const getSidebarH = () => getTopOffset() + getPlannedH() + getDividerH() + getActualH();
 const getGridGroupH = () => getTopOffset() + getPlannedH() + 4 + getActualH();
 const getPB = vid => S.branches.filter(b => b.variantId === vid);
 
@@ -88,7 +92,9 @@ const yearHeader = $('yearHeader'), monthHeader = $('monthHeader'), tlGrid = $('
 const sbRows = $('sbRows'), tlScroll = $('tlScroll');
 const nodePopup = $('nodePopup'), ctxMenu = $('ctxMenu');
 const modalOverlay = $('modalOverlay'), modalBody = $('modalBody'), modalTitle = $('modalTitle');
-let pendCell = null, dragNode = null, dox = 0, doy = 0, ctxId = null, ctxRowType = null, modalCb = null, dragVL = null, dvox = 0, dvoy = 0, dragRemark = null, drox = 0, droy = 0;
+let pendCell = null, dragNode = null, dox = 0, doy = 0, ctxId = null, ctxRowType = null, modalCb = null, dragVL = null, dvox = 0, dvoy = 0, dragRemark = null, drox = 0, droy = 0, mergePick = null;
+const STATE_DEFAULTS = P.cloneState(S);
+let persistenceReady = false, suppressDraftSave = false, draftSaveTimer = null;
 
 // ─── SAMPLE DATA ─────────────────────────────────────────────────────────────
 function loadSample() {
@@ -104,8 +110,190 @@ function loadSample() {
   ];
 }
 
+// ─── LOCAL DRAFT + DATAVERSE PERSISTENCE ────────────────────────────────────
+function initPersistenceState() {
+  const projectId = getOrCreateActiveProjectId();
+  const keys = P.getStorageKeys(projectId);
+  const draft = readLocalJson(keys.draft);
+  const baseline = readLocalJson(keys.baseline);
+
+  if (draft) {
+    replaceState({ ...draft, projectId });
+  } else if (baseline) {
+    replaceState({ ...baseline, projectId });
+    writeLocalJson(keys.draft, captureState());
+  } else {
+    loadSample();
+    S.projectId = projectId;
+    const initial = captureState();
+    writeLocalJson(keys.draft, initial);
+    writeLocalJson(keys.baseline, initial);
+  }
+
+  if (!readLocalJson(keys.baseline)) writeLocalJson(keys.baseline, captureState());
+  persistenceReady = true;
+}
+
+function getOrCreateActiveProjectId() {
+  try {
+    const existing = localStorage.getItem(P.ACTIVE_PROJECT_KEY);
+    if (existing) return existing;
+    const next = `local-${Date.now()}`;
+    localStorage.setItem(P.ACTIVE_PROJECT_KEY, next);
+    return next;
+  } catch (err) {
+    console.warn('Draft storage unavailable:', err);
+    return `local-${Date.now()}`;
+  }
+}
+
+function getCurrentStorageKeys() {
+  if (!S.projectId) S.projectId = getOrCreateActiveProjectId();
+  return P.getStorageKeys(S.projectId);
+}
+
+function readLocalJson(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch (err) {
+    console.warn('Could not read local draft data:', err);
+    return null;
+  }
+}
+
+function writeLocalJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (err) {
+    console.warn('Could not write local draft data:', err);
+  }
+}
+
+function removeLocalItem(key) {
+  try {
+    localStorage.removeItem(key);
+  } catch (err) {
+    console.warn('Could not remove local draft data:', err);
+  }
+}
+
+function captureState() {
+  return P.normalizeStateForPersistence(S);
+}
+
+function replaceState(nextState) {
+  const merged = {
+    ...P.cloneState(STATE_DEFAULTS),
+    ...P.cloneState(nextState),
+    info: { ...STATE_DEFAULTS.info, ...(nextState.info || {}) },
+    leftTable: nextState.leftTable || P.cloneState(STATE_DEFAULTS.leftTable),
+    rightTable: nextState.rightTable || P.cloneState(STATE_DEFAULTS.rightTable),
+    variants: nextState.variants || [],
+    planNodes: nextState.planNodes || [],
+    actualNodes: nextState.actualNodes || [],
+    branches: nextState.branches || [],
+    branchNodes: nextState.branchNodes || [],
+    actualBranchNodes: nextState.actualBranchNodes || [],
+    mergeLinks: nextState.mergeLinks || [],
+    years: nextState.years || P.cloneState(STATE_DEFAULTS.years),
+    labelPositions: nextState.labelPositions || {}
+  };
+  Object.keys(S).forEach(key => delete S[key]);
+  Object.assign(S, merged);
+}
+
+function persistDraftNow() {
+  if (!persistenceReady || suppressDraftSave) return;
+  writeLocalJson(getCurrentStorageKeys().draft, captureState());
+  updateDraftStatus();
+}
+
+function scheduleDraftSave() {
+  if (!persistenceReady || suppressDraftSave) return;
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(persistDraftNow, 80);
+}
+
+function getBaselineState() {
+  return readLocalJson(getCurrentStorageKeys().baseline) || captureState();
+}
+
+function updateDraftStatus(message) {
+  const status = $('draftStatus');
+  if (!status) return;
+  const draft = readLocalJson(getCurrentStorageKeys().draft) || captureState();
+  const baseline = getBaselineState();
+  const dirty = P.isDirty(draft, baseline);
+  status.hidden = !dirty && !message;
+  $('draftStatusText').textContent = message || (dirty ? 'Draft changes' : 'Saved');
+}
+
+function syncHeaderInputsFromState() {
+  $('fProject').value = S.info.project || '';
+  $('fLocation').value = S.info.location || '';
+  $('fPlant').value = S.info.plant || '';
+  $('fProjType').value = S.info.type || '';
+  $('fStatus').value = S.info.status || 'On Track';
+  $('remarksBox').textContent = S.remarks || '';
+  syncPubBtn();
+}
+
+function revertDraftToBaseline() {
+  const baseline = getBaselineState();
+  suppressDraftSave = true;
+  replaceState(baseline);
+  removeLocalItem(getCurrentStorageKeys().draft);
+  writeLocalJson(getCurrentStorageKeys().draft, captureState());
+  syncHeaderInputsFromState();
+  renderAll();
+  suppressDraftSave = false;
+  persistDraftNow();
+  updateDraftStatus('Reverted');
+  setTimeout(() => updateDraftStatus(), 1400);
+}
+
+function adoptProjectId(nextProjectId, snapshot) {
+  if (!nextProjectId || nextProjectId === S.projectId) return snapshot;
+  const oldKeys = getCurrentStorageKeys();
+  const nextSnapshot = { ...snapshot, projectId: nextProjectId };
+  S.projectId = nextProjectId;
+  try {
+    localStorage.setItem(P.ACTIVE_PROJECT_KEY, nextProjectId);
+  } catch (err) {
+    console.warn('Could not update active project id:', err);
+  }
+  removeLocalItem(oldKeys.draft);
+  removeLocalItem(oldKeys.baseline);
+  return nextSnapshot;
+}
+
+async function saveDraftToDataverse(draft, baseline) {
+  const delta = P.createDataverseDelta(draft, baseline);
+  const bridge = window.ProjectTrackerDataverse;
+
+  if (bridge && typeof bridge.saveProject === 'function') {
+    return bridge.saveProject({ projectId: draft.projectId, delta, payload: delta.current });
+  }
+
+  writeLocalJson(`${P.STORAGE_PREFIX}:dataverse-payload:${draft.projectId}`, {
+    projectId: draft.projectId,
+    savedAt: new Date().toISOString(),
+    delta
+  });
+  console.warn('ProjectTrackerDataverse.saveProject is not configured; saved Dataverse payload locally for development.');
+  return { projectId: draft.projectId, developmentOnly: true };
+}
+
 // ─── RENDER ALL ──────────────────────────────────────────────────────────────
-function renderAll() { renderHeaders(); renderSidebar(); renderGrid(); renderNodes(); renderBottomTables(); }
+function renderAll() {
+  renderHeaders();
+  renderSidebar();
+  renderGrid();
+  renderNodes();
+  renderBottomTables();
+  scheduleDraftSave();
+}
 
 // ─── YEAR/MONTH HEADERS ──────────────────────────────────────────────────────
 function renderHeaders() {
@@ -146,6 +334,7 @@ function renderSidebar() {
     <div class="sr-cell pa" style="height:${totalH}px;flex-direction:column;padding:0">
       ${hasEopLane() ? `<div class="pa-eop-spacer" style="height:${getTopOffset()}px"></div>` : ''}
       <div class="pa-plan" style="height:${getPlannedH()}px">plan</div>
+      <div class="pa-divider" style="height:${getDividerH()}px"></div>
       <div class="pa-actual" style="height:${getActualH()}px">Actual</div>
     </div>`;
   sbRows.appendChild(row);
@@ -197,6 +386,8 @@ function renderGrid() {
   drawLines();
   renderVariantLabels();
   renderCanvasRemarks();
+  renderMergeHint();
+  scheduleDraftSave();
 }
 
 function renderEopLane(grp, tc) {
@@ -260,7 +451,7 @@ function makeBranchSubRow(tc, branchId, rType = 'branch', label = '') {
 
 // ─── LINES ───────────────────────────────────────────────────────────────────
 function drawLines() {
-  document.querySelectorAll('.tl-line').forEach(e => e.remove());
+  document.querySelectorAll('.tl-line,.tl-relationship-svg').forEach(e => e.remove());
   const grp = tlGrid.querySelector('.grid-vr-grp');
   if (!grp || !S.variants.length) return;
 
@@ -274,19 +465,11 @@ function drawLines() {
       mkLine(grp, pn[i].col * COL + COL / 2, y, pn[i + 1].col * COL + COL / 2, y, '#2563eb');
   });
 
-  // BRANCH LINES + FORK LINES
+  // BRANCH LINES
   S.branches.forEach(br => {
     const branchLaneIdx = findPlanLaneIndex('branch', br.id);
     if (branchLaneIdx < 0) return;
     const bY = getTopOffset() + branchLaneIdx * ROH + ROH / 2;
-    const parent = S.planNodes.find(n => n.id === br.parentNodeId);
-    if (parent) {
-      const parentLaneIdx = findPlanLaneIndex('plan', parent.variantId);
-      if (parentLaneIdx >= 0) {
-        const fromY = getTopOffset() + parentLaneIdx * ROH + ROH / 2;
-        mkLineV(grp, parent.col * COL + COL / 2, fromY, bY, '#00c9b1');
-      }
-    }
     const bn = S.branchNodes.filter(n => n.branchId === br.id).sort((a, b) => a.col - b.col);
     for (let i = 0; i < bn.length - 1; i++)
       mkLine(grp, bn[i].col * COL + COL / 2, bY, bn[i + 1].col * COL + COL / 2, bY, '#00c9b1');
@@ -311,6 +494,8 @@ function drawLines() {
     for (let i = 0; i < nodes.length - 1; i++)
       mkLine(grp, nodes[i].col * COL + COL / 2, y, nodes[i + 1].col * COL + COL / 2, y, '#f97316');
   });
+
+  drawRelationshipArrows(grp);
 }
 
 function mkLine(parent, x1, y1, x2, y2, color) {
@@ -319,11 +504,78 @@ function mkLine(parent, x1, y1, x2, y2, color) {
   d.style.cssText = `position:absolute;background:${color};opacity:.8;z-index:3;pointer-events:none;left:${Math.min(x1, x2)}px;top:${y1 - 1}px;width:${Math.abs(x2 - x1)}px;height:2px`;
   parent.appendChild(d);
 }
-function mkLineV(parent, x, y1, y2, color) {
-  const d = document.createElement('div');
-  d.className = 'tl-line';
-  d.style.cssText = `position:absolute;background:${color};opacity:.8;z-index:3;pointer-events:none;left:${x - 1}px;top:${Math.min(y1, y2)}px;width:2px;height:${Math.abs(y2 - y1)}px`;
-  parent.appendChild(d);
+function drawRelationshipArrows(grp) {
+  const svg = makeRelationshipSvg();
+  let hasArrows = false;
+
+  S.branches.forEach(br => {
+    const parent = S.planNodes.find(n => n.id === br.parentNodeId);
+    const firstChild = getFirstBranchNode(br.id);
+    if (!parent || !firstChild) return;
+    const from = getPlanNodeCenter(parent);
+    const to = getBranchNodeCenter(firstChild);
+    if (!from || !to) return;
+    addArrowPath(svg, from, to, 'branch-start-arrow', 'branchStartArrow');
+    hasArrows = true;
+  });
+
+  S.mergeLinks.forEach(link => {
+    const fromNode = S.branchNodes.find(n => n.id === link.fromNodeId && n.branchId === link.fromBranchId);
+    const toNode = S.planNodes.find(n => n.id === link.toNodeId);
+    if (!fromNode || !toNode) return;
+    const from = getBranchNodeCenter(fromNode);
+    const to = getPlanNodeCenter(toNode);
+    if (!from || !to) return;
+    addArrowPath(svg, from, to, 'merge-link-arrow', 'mergeLinkArrow');
+    hasArrows = true;
+  });
+
+  if (hasArrows) grp.appendChild(svg);
+}
+
+function makeRelationshipSvg() {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.classList.add('tl-relationship-svg');
+  svg.setAttribute('width', totalCols() * COL);
+  svg.setAttribute('height', getGridGroupH());
+  svg.setAttribute('viewBox', `0 0 ${totalCols() * COL} ${getGridGroupH()}`);
+  svg.innerHTML = `
+    <defs>
+      <marker id="branchStartArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L8,4 L0,8 Z" fill="#00c9b1"></path>
+      </marker>
+      <marker id="mergeLinkArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L8,4 L0,8 Z" fill="#7c3aed"></path>
+      </marker>
+    </defs>`;
+  return svg;
+}
+
+function addArrowPath(svg, from, to, cls, markerId) {
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  const midY = from.y + (to.y - from.y) / 2;
+  path.setAttribute('class', cls);
+  path.setAttribute('d', `M ${from.x} ${from.y} L ${from.x} ${midY} L ${to.x} ${midY} L ${to.x} ${to.y}`);
+  path.setAttribute('marker-end', `url(#${markerId})`);
+  svg.appendChild(path);
+}
+
+function getFirstBranchNode(branchId) {
+  return S.branchNodes
+    .filter(n => n.branchId === branchId)
+    .sort((a, b) => a.col - b.col || String(a.id).localeCompare(String(b.id)))[0] || null;
+}
+
+function getPlanNodeCenter(node) {
+  const laneIdx = findPlanLaneIndex('plan', node.variantId);
+  if (laneIdx < 0) return null;
+  return { x: node.col * COL + COL / 2, y: getTopOffset() + laneIdx * ROH + ROH / 2 };
+}
+
+function getBranchNodeCenter(node) {
+  const laneIdx = findPlanLaneIndex('branch', node.branchId);
+  if (laneIdx < 0) return null;
+  return { x: node.col * COL + COL / 2, y: getTopOffset() + laneIdx * ROH + ROH / 2 };
 }
 
 // ─── NODES ───────────────────────────────────────────────────────────────────
@@ -371,6 +623,7 @@ function renderNodes() {
     el.style.cssText = `left:${n.col * COL + COL / 2 - 14}px;top:${y - 14}px`;
     grp.appendChild(el);
   });
+  updateMergeTargetClasses();
 }
 
 function mkNode(n, rType) {
@@ -378,6 +631,7 @@ function mkNode(n, rType) {
   const cls = rType === 'plan' ? 'plan-node' : rType === 'branch' ? 'branch-node' : 'actual-node';
   el.className = 'node ' + cls;
   el.dataset.nodeId = n.id; el.dataset.rType = rType;
+  if (n.variantId) el.dataset.variantId = n.variantId;
   if (n.branchId) el.dataset.branchId = n.branchId;
   const dh = n.date ? `<span class="node-date">${fmtDate(n.date)}</span>` : '';
   el.innerHTML = `
@@ -391,8 +645,10 @@ function mkNode(n, rType) {
     else if (rType === 'branch') S.branchNodes = S.branchNodes.filter(x => x.id !== n.id);
     else if (rType === 'actualBranch') S.actualBranchNodes = S.actualBranchNodes.filter(x => x.id !== n.id);
     else S.actualNodes = S.actualNodes.filter(x => x.id !== n.id);
-    renderGrid(); renderNodes();
+    removeMergeLinksForNode(n.id);
+    renderGrid(); renderNodes(); persistDraftNow();
   });
+  el.addEventListener('click', e => handleMergeTargetClick(e, n, rType));
   el.addEventListener('mousedown', startNodeDrag);
   el.addEventListener('contextmenu', e => { e.preventDefault(); showCtx(e, n.id, rType); });
   return el;
@@ -401,6 +657,10 @@ function mkNode(n, rType) {
 // ─── CELL CLICK ──────────────────────────────────────────────────────────────
 function onCellClick(e) {
   if (e.target.closest('.node')) return;
+  if (mergePick) {
+    clearMergePick();
+    return;
+  }
   const col = +this.dataset.col, vId = this.dataset.vId, rType = this.dataset.rType, branchId = this.dataset.branchId || null;
   pendCell = { col, vId, rType, branchId };
   const r = this.getBoundingClientRect();
@@ -422,7 +682,7 @@ $('npConfirm').addEventListener('click', () => {
   else if (rType === 'actualBranch') { nd.branchId = branchId; S.actualBranchNodes.push(nd); }
   else { nd.variantId = vId; S.actualNodes.push(nd); }
   nodePopup.classList.remove('active'); pendCell = null;
-  renderGrid(); renderNodes();
+  renderGrid(); renderNodes(); persistDraftNow();
 });
 $('npCancel').addEventListener('click', () => { nodePopup.classList.remove('active'); pendCell = null; });
 
@@ -432,6 +692,7 @@ function showCtx(e, nodeId, rType) {
   ctxMenu.style.cssText = `left:${e.clientX}px;top:${e.clientY}px`;
   ctxMenu.classList.add('active');
   $('ctxBranch').style.display = rType === 'plan' ? 'block' : 'none';
+  $('ctxMerge').style.display = rType === 'branch' ? 'block' : 'none';
 }
 $('ctxBranch').addEventListener('click', () => {
   ctxMenu.classList.remove('active');
@@ -441,8 +702,15 @@ $('ctxBranch').addEventListener('click', () => {
     const branch = { id: uid(), variantId: parent.variantId, parentNodeId: ctxId, label };
     const insertAt = S.branches.reduce((idx, b, i) => b.variantId === parent.variantId ? i + 1 : idx, S.branches.length);
     S.branches.splice(insertAt, 0, branch);
-    renderAll();
+    renderAll(); persistDraftNow();
   });
+});
+$('ctxMerge').addEventListener('click', e => {
+  e.stopPropagation();
+  ctxMenu.classList.remove('active');
+  const fromNode = S.branchNodes.find(n => n.id === ctxId);
+  if (!fromNode) return;
+  setMergePick({ fromNodeId: fromNode.id, fromBranchId: fromNode.branchId });
 });
 $('ctxDelete').addEventListener('click', () => {
   ctxMenu.classList.remove('active');
@@ -451,9 +719,86 @@ $('ctxDelete').addEventListener('click', () => {
   else if (ctxRowType === 'branch') S.branchNodes = S.branchNodes.filter(n => n.id !== ctxId);
   else if (ctxRowType === 'actualBranch') S.actualBranchNodes = S.actualBranchNodes.filter(n => n.id !== ctxId);
   else S.actualNodes = S.actualNodes.filter(n => n.id !== ctxId);
-  renderGrid(); renderNodes(); ctxId = null;
+  removeMergeLinksForNode(ctxId);
+  renderGrid(); renderNodes(); persistDraftNow(); ctxId = null;
 });
-document.addEventListener('click', e => { if (!ctxMenu.contains(e.target)) ctxMenu.classList.remove('active'); });
+document.addEventListener('click', e => {
+  if (!ctxMenu.contains(e.target)) ctxMenu.classList.remove('active');
+  if (mergePick && !e.target.closest('.node') && !e.target.closest('#ctxMenu')) clearMergePick();
+});
+
+function setMergePick(nextPick) {
+  mergePick = nextPick;
+  document.body.classList.add('merge-select-mode');
+  updateMergeTargetClasses();
+  renderMergeHint();
+}
+
+function clearMergePick() {
+  mergePick = null;
+  document.body.classList.remove('merge-select-mode');
+  updateMergeTargetClasses();
+  renderMergeHint();
+}
+
+function handleMergeTargetClick(e, node, rType) {
+  if (!mergePick) return false;
+  e.preventDefault();
+  e.stopPropagation();
+  if (rType !== 'plan') return true;
+
+  const branch = S.branches.find(b => b.id === mergePick.fromBranchId);
+  if (!branch || branch.variantId !== node.variantId) return true;
+
+  S.mergeLinks = S.mergeLinks.filter(link => link.fromNodeId !== mergePick.fromNodeId);
+  S.mergeLinks.push({
+    id: uid(),
+    fromNodeId: mergePick.fromNodeId,
+    fromBranchId: mergePick.fromBranchId,
+    toNodeId: node.id
+  });
+  clearMergePick();
+  renderAll(); persistDraftNow();
+  return true;
+}
+
+function renderMergeHint() {
+  tlGrid.querySelectorAll('.merge-target-hint').forEach(e => e.remove());
+  if (!mergePick) return;
+  const grp = tlGrid.querySelector('.grid-vr-grp');
+  if (!grp) return;
+  const branch = S.branches.find(b => b.id === mergePick.fromBranchId);
+  if (!branch) return;
+  const laneIdx = findPlanLaneIndex('plan', branch.variantId);
+  if (laneIdx < 0) return;
+  const hint = document.createElement('div');
+  hint.className = 'merge-target-hint';
+  hint.style.top = (getTopOffset() + laneIdx * ROH + 8) + 'px';
+  hint.textContent = 'Select parent stage to merge';
+  grp.appendChild(hint);
+}
+
+function updateMergeTargetClasses() {
+  document.querySelectorAll('.node.merge-valid-target,.node.merge-invalid-target').forEach(el => {
+    el.classList.remove('merge-valid-target', 'merge-invalid-target');
+  });
+  if (!mergePick) return;
+  const branch = S.branches.find(b => b.id === mergePick.fromBranchId);
+  if (!branch) return;
+  document.querySelectorAll('.plan-node').forEach(el => {
+    el.classList.add(el.dataset.variantId === branch.variantId ? 'merge-valid-target' : 'merge-invalid-target');
+  });
+}
+
+function removeMergeLinksForNode(nodeId) {
+  S.mergeLinks = S.mergeLinks.filter(link => link.fromNodeId !== nodeId && link.toNodeId !== nodeId);
+  if (mergePick && mergePick.fromNodeId === nodeId) clearMergePick();
+}
+
+function removeMergeLinksForBranch(branchId) {
+  S.mergeLinks = S.mergeLinks.filter(link => link.fromBranchId !== branchId);
+  if (mergePick && mergePick.fromBranchId === branchId) clearMergePick();
+}
 
 // ─── VARIANTS ────────────────────────────────────────────────────────────────
 $('addVariantBtn').addEventListener('click', () => {
@@ -462,7 +807,7 @@ $('addVariantBtn').addEventListener('click', () => {
   const idx = S.variants.length;
   S.variants.push({ id: uid(), name, x: 20, y: idx * ROH * 2 + 10 });
   $('variantInput').value = '';
-  renderAll();
+  renderAll(); persistDraftNow();
 });
 $('variantInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('addVariantBtn').click(); });
 window.deleteVariant = id => {
@@ -474,7 +819,9 @@ window.deleteVariant = id => {
   S.branches = S.branches.filter(b => b.variantId !== id);
   S.branchNodes = S.branchNodes.filter(n => !bids.includes(n.branchId));
   S.actualBranchNodes = S.actualBranchNodes.filter(n => !bids.includes(n.branchId));
-  renderAll();
+  S.mergeLinks = S.mergeLinks.filter(link => !bids.includes(link.fromBranchId) && S.planNodes.some(n => n.id === link.toNodeId));
+  if (mergePick && bids.includes(mergePick.fromBranchId)) clearMergePick();
+  renderAll(); persistDraftNow();
 };
 
 // ─── BOTTOM TABLES ───────────────────────────────────────────────────────────
@@ -494,11 +841,11 @@ function renderDynTable(wrapId, tbl) {
     const th = document.createElement('th'); th.className = 'dyn-th';
     const sp = document.createElement('span');
     sp.contentEditable = 'true'; sp.className = 'th-name'; sp.textContent = col;
-    sp.addEventListener('blur', () => { tbl.cols[ci] = sp.textContent.trim(); });
+    sp.addEventListener('blur', () => { tbl.cols[ci] = sp.textContent.trim(); persistDraftNow(); });
     th.appendChild(sp);
     if (ci > 0) {
       const dx = document.createElement('button'); dx.className = 'col-del'; dx.textContent = '×';
-      dx.addEventListener('click', () => { tbl.cols.splice(ci, 1); tbl.rows.forEach(r => r.splice(ci, 1)); renderBottomTables(); });
+      dx.addEventListener('click', () => { tbl.cols.splice(ci, 1); tbl.rows.forEach(r => r.splice(ci, 1)); renderBottomTables(); persistDraftNow(); });
       th.appendChild(dx);
     }
     htr.appendChild(th);
@@ -512,25 +859,26 @@ function renderDynTable(wrapId, tbl) {
       const td = document.createElement('td');
       td.className = 'dyn-td' + (cell ? ' filled' : '');
       td.contentEditable = 'true'; td.textContent = cell;
-      td.addEventListener('input', () => { tbl.rows[ri][ci] = td.textContent.trim(); td.classList.toggle('filled', !!td.textContent.trim()); });
+      td.addEventListener('input', () => { tbl.rows[ri][ci] = td.textContent.trim(); td.classList.toggle('filled', !!td.textContent.trim()); scheduleDraftSave(); });
       tr.appendChild(td);
     });
     const tdx = document.createElement('td'); tdx.className = 'dyn-td row-del-cell';
     const rdx = document.createElement('button'); rdx.className = 'row-del'; rdx.textContent = '×';
-    rdx.addEventListener('click', () => { tbl.rows.splice(ri, 1); renderBottomTables(); });
+    rdx.addEventListener('click', () => { tbl.rows.splice(ri, 1); renderBottomTables(); persistDraftNow(); });
     tdx.appendChild(rdx); tr.appendChild(tdx);
     tbody.appendChild(tr);
   });
   table.appendChild(tbody); wrap.appendChild(table);
 }
 
-$('addMsRowBtn').addEventListener('click', () => { S.leftTable.rows.push(Array(S.leftTable.cols.length).fill('')); renderBottomTables(); });
-$('addMsColBtn').addEventListener('click', () => { S.leftTable.cols.push('New Col'); S.leftTable.rows.forEach(r => r.push('')); renderBottomTables(); });
-$('addEopRowBtn').addEventListener('click', () => { S.rightTable.rows.push(Array(S.rightTable.cols.length).fill('')); renderBottomTables(); });
-$('addEopColBtn').addEventListener('click', () => { S.rightTable.cols.push('New Col'); S.rightTable.rows.forEach(r => r.push('')); renderBottomTables(); });
+$('addMsRowBtn').addEventListener('click', () => { S.leftTable.rows.push(Array(S.leftTable.cols.length).fill('')); renderBottomTables(); persistDraftNow(); });
+$('addMsColBtn').addEventListener('click', () => { S.leftTable.cols.push('New Col'); S.leftTable.rows.forEach(r => r.push('')); renderBottomTables(); persistDraftNow(); });
+$('addEopRowBtn').addEventListener('click', () => { S.rightTable.rows.push(Array(S.rightTable.cols.length).fill('')); renderBottomTables(); persistDraftNow(); });
+$('addEopColBtn').addEventListener('click', () => { S.rightTable.cols.push('New Col'); S.rightTable.rows.forEach(r => r.push('')); renderBottomTables(); persistDraftNow(); });
 $('remarksBox').addEventListener('input', () => {
   S.remarks = $('remarksBox').textContent.trim();
   renderCanvasRemarks();
+  scheduleDraftSave();
 });
 
 // ─── VARIANT FLOATING LABELS ────────────────────────────────────────────────
@@ -587,6 +935,7 @@ function onVLUp(e) {
   dragVL.style.zIndex = '6'; dragVL = null;
   document.removeEventListener('mousemove', onVLMove);
   document.removeEventListener('mouseup', onVLUp);
+  persistDraftNow();
 }
 
 // ─── CANVAS REMARKS ─────────────────────────────────────────────────────────
@@ -632,6 +981,7 @@ function onRemarkUp(e) {
   dragRemark = null;
   document.removeEventListener('mousemove', onRemarkMove);
   document.removeEventListener('mouseup', onRemarkUp);
+  persistDraftNow();
 }
 
 // ─── HEADER FORM ─────────────────────────────────────────────────────────────
@@ -641,15 +991,18 @@ function bindHeader() {
   $('fPlant').value = S.info.plant;
   $('fProjType').value = S.info.type;
   $('fStatus').value = S.info.status;
+  $('remarksBox').textContent = S.remarks || '';
   syncPubBtn();
   const map = { fProject: 'project', fLocation: 'location', fPlant: 'plant', fProjType: 'type', fStatus: 'status' };
   Object.entries(map).forEach(([id, key]) => {
     $(id).addEventListener('input', () => {
       S.info[key] = $(id).value;
-      if (key === 'location' || key === 'plant') renderSidebar();
+      if (key === 'project' || key === 'location' || key === 'plant') renderSidebar();
+      scheduleDraftSave();
     });
   });
-  $('publishToggle').addEventListener('click', () => { S.info.published = !S.info.published; syncPubBtn(); });
+  $('publishToggle').addEventListener('click', () => { S.info.published = !S.info.published; syncPubBtn(); persistDraftNow(); });
+  $('revertDraftBtn').addEventListener('click', revertDraftToBaseline);
 }
 function syncPubBtn() {
   const btn = $('publishToggle');
@@ -660,6 +1013,7 @@ function syncPubBtn() {
 // ─── DRAG NODES ──────────────────────────────────────────────────────────────
 function startNodeDrag(e) {
   if (e.target.classList.contains('node-del')) return;
+  if (mergePick) return;
   e.preventDefault();
   dragNode = e.currentTarget;
   const r = dragNode.getBoundingClientRect();
@@ -688,12 +1042,12 @@ function onNodeUp(e) {
         ? S.actualBranchNodes
         : S.actualNodes;
   const node = arr.find(n => n.id === nid);
-  if (node) node.col = Math.max(0, Math.min(Math.round((e.clientX - gr.left - dox + 14) / COL), totalCols() - 1));
+  if (node) node.col = Math.max(0, Math.min(Math.floor((e.clientX - gr.left - dox + 14) / COL), totalCols() - 1));
   dragNode.style.opacity = '1'; dragNode.style.zIndex = '5';
   dragNode = null;
   document.removeEventListener('mousemove', onNodeMove);
   document.removeEventListener('mouseup', onNodeUp);
-  renderGrid(); renderNodes();
+  renderGrid(); renderNodes(); persistDraftNow();
 }
 
 // ─── SCROLL SYNC ─────────────────────────────────────────────────────────────
@@ -716,7 +1070,11 @@ document.addEventListener('click', e => {
   if (!nodePopup.contains(e.target) && !e.target.closest('.g-cell')) { nodePopup.classList.remove('active'); pendCell = null; }
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { nodePopup.classList.remove('active'); ctxMenu.classList.remove('active'); }
+  if (e.key === 'Escape') {
+    nodePopup.classList.remove('active');
+    ctxMenu.classList.remove('active');
+    if (mergePick) clearMergePick();
+  }
 });
 
 // ─── THEME ───────────────────────────────────────────────────────────────────
@@ -729,7 +1087,7 @@ $('themeToggleBtn').addEventListener('click', () => {
 // ─── ADD YEAR ────────────────────────────────────────────────────────────────
 $('addYearBtn').addEventListener('click', () => {
   S.years.push(S.years[S.years.length - 1] + 1);
-  renderAll();
+  renderAll(); persistDraftNow();
 });
 
 // ─── SUBMIT / BACK ───────────────────────────────────────────────────────────
@@ -751,7 +1109,7 @@ function parseEopDate() {
   return '';
 }
 
-$('submitBtn').addEventListener('click', () => {
+$('submitBtn').addEventListener('click', async () => {
   const eopDate = parseEopDate();
   if (!eopDate) {
     alert('Enter EOP date in Date- month/year as YYYY-MM, Mon YYYY, or MM/YYYY.');
@@ -759,8 +1117,38 @@ $('submitBtn').addEventListener('click', () => {
   }
   ensureYearVisible(eopDate);
   S.eopDate = eopDate;
-  console.log('State:', JSON.stringify(S, null, 2));
   renderAll();
+  persistDraftNow();
+
+  const draft = captureState();
+  const baseline = getBaselineState();
+  if (!P.isDirty(draft, baseline)) {
+    updateDraftStatus('Already saved');
+    setTimeout(() => updateDraftStatus(), 1400);
+    return;
+  }
+
+  const submitBtn = $('submitBtn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Saving...';
+  try {
+    const result = await saveDraftToDataverse(draft, baseline);
+    const submitted = adoptProjectId(result && result.projectId, draft);
+    const keys = getCurrentStorageKeys();
+    writeLocalJson(keys.baseline, submitted);
+    writeLocalJson(keys.draft, submitted);
+    replaceState(submitted);
+    syncHeaderInputsFromState();
+    updateDraftStatus(result && result.developmentOnly ? 'Saved locally for Dataverse' : 'Saved');
+    setTimeout(() => updateDraftStatus(), 1800);
+  } catch (err) {
+    console.error(err);
+    updateDraftStatus('Save failed');
+    alert('Could not save to Dataverse. Your local draft is still saved in this browser.');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Submit';
+  }
 });
 $('backBtn').addEventListener('click', () => { if (confirm('Go back? Unsaved changes will be lost.')) history.back(); });
 
@@ -817,10 +1205,11 @@ function fillShapeSelect(selectEl) {
   selectEl.innerHTML = NODE_SHAPES.map(shape => `<option value="${shape.value}">${shape.label}</option>`).join('');
 }
 
-loadSample();
+initPersistenceState();
 bindHeader();
 fillShapeSelect($('nodeTypeSelect'));
 fillShapeSelect($('npShape'));
 renderAll();
+updateDraftStatus();
 syncScroll();
 setupResize();
