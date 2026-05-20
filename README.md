@@ -155,6 +155,9 @@ Stages are draggable horizontally within their lane. Right-click eligible Plan s
 ### EOP Table
 The EOP table's date columns (any column whose header contains "date" or "month") render `<input type="month">` pickers. Submit parses every filled EOP row/date cell into `eopItems`, keeps the first item as the backward-compatible `eopDate`, and renders all EOP items as X markers in one EOP lane.
 
+### Discussion Period
+The timeline highlights a discussion-period window across the month header and every grid row. The temporary browser-side default is `2024-09`; that month is highlighted strongly, with the month before and after shown as lighter context columns. The Dataverse payload includes `discussion_period_date` so the dummy value can be replaced by the backend-provided month later.
+
 ### Copy to Actual
 The `Copy to Actual` header button syncs Plan stages into Actual stages and Plan branch stages into Actual branch stages. Existing copied Actual stages are overwritten from their source Plan stages, missing copied stages are created, and manual Actual stages without a `sourcePlanNodeId` are preserved.
 

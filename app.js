@@ -80,6 +80,8 @@ const INITIAL_DATA = {
   years: [2024, 2025],
   eopDate: '',
   eopItems: [],
+  discussionDate: '2024-09',
+  milestoneTableVisible: false,
   labelPositions: {},
   remarkPosition: null,
   nid: 1,
@@ -113,6 +115,7 @@ const store = createStore((set, get) => ({
   setRemarks: (text) => set({ remarks: text }),
   setRemarkPosition: (pos) => set({ remarkPosition: pos }),
   setLabelPosition: (key, pos) => set(s => ({ labelPositions: { ...s.labelPositions, [key]: pos } })),
+  showMilestoneTable: () => set({ milestoneTableVisible: true }),
 
   // ── Variants ──
   addVariant: (name) => set(s => ({
@@ -268,6 +271,8 @@ const store = createStore((set, get) => ({
     labelPositions: nextState.labelPositions || {},
     eopDate: nextState.eopDate || '',
     eopItems: nextState.eopItems || [],
+    discussionDate: nextState.discussionDate || INITIAL_DATA.discussionDate,
+    milestoneTableVisible: !!nextState.milestoneTableVisible,
     remarks: nextState.remarks || '',
     remarkPosition: nextState.remarkPosition || null,
   })),
@@ -339,6 +344,25 @@ function colToDate(col, state) {
   return `${year}-${String(month).padStart(2, '0')}`;
 }
 
+function getDiscussionPeriodCols(state) {
+  const current = dateToCol(state.discussionDate, state);
+  const maxCol = totalCols(state) - 1;
+  if (current < 0 || maxCol < 0) return { prev: null, current: null, next: null };
+  return {
+    prev: current > 0 ? current - 1 : null,
+    current,
+    next: current < maxCol ? current + 1 : null,
+  };
+}
+
+function getDiscussionPeriodClass(col, state) {
+  const cols = getDiscussionPeriodCols(state);
+  if (col === cols.current) return 'discussion-current';
+  if (col === cols.prev) return 'discussion-prev';
+  if (col === cols.next) return 'discussion-next';
+  return '';
+}
+
 function normalizeMonthInput(raw) {
   raw = String(raw || '').trim();
   if (/^\d{4}-\d{2}$/.test(raw)) return raw;
@@ -385,11 +409,27 @@ function getEopItemsForState(state) {
   return [{ id: 'eop-primary', label: '', date: state.eopDate, col: dateToCol(state.eopDate, state), rowIndex: 0, colIndex: 1 }];
 }
 
+function getMilestoneTableRows(state) {
+  const table = state.leftTable || { cols: [], rows: [] };
+  const cols = (table.cols || []).map(col => String(col || '').trim());
+  const rows = (table.rows || [])
+    .map(row => cols.map((_, index) => String((row && row[index]) || '').trim()))
+    .filter(row => row.some(Boolean));
+  return { cols, rows };
+}
+
 function getBranchSourcePoint(branch, state) {
   const sourceNodeId = branch.sourceNodeId || branch.parentNodeId;
   const sourceNode = sourceNodeId ? state.planNodes.find(n => n.id === sourceNodeId) : null;
   if (sourceNode) return getPlanNodeCenter(sourceNode, state);
   const laneIdx = findPlanLaneIndex(state, 'plan', branch.variantId);
+  const col = Number.isFinite(branch.sourceCol) ? branch.sourceCol : dateToCol(branch.sourceDate, state);
+  if (laneIdx < 0 || col < 0) return null;
+  return { x: col * COL + COL / 2, y: getTopOffset(state) + laneIdx * ROH + ROH / 2 };
+}
+
+function getBranchLaneAnchorPoint(branch, state) {
+  const laneIdx = findPlanLaneIndex(state, 'branch', branch.id);
   const col = Number.isFinite(branch.sourceCol) ? branch.sourceCol : dateToCol(branch.sourceDate, state);
   if (laneIdx < 0 || col < 0) return null;
   return { x: col * COL + COL / 2, y: getTopOffset(state) + laneIdx * ROH + ROH / 2 };
@@ -790,6 +830,7 @@ function createDataversePayload(state) {
     project_type: s.info?.type || '',
     status: s.info?.status || '',
     published: !!s.info?.published,
+    discussion_period_date: s.discussionDate || '',
     eop_date: primaryEopDate,
     eop_dates_json: JSON.stringify(eopItems || []),
     stage_shifts_json: JSON.stringify(s.stageShifts || []),
@@ -890,15 +931,16 @@ function renderHeaders(state) {
   monthHeader.innerHTML = '';
   const tc = totalCols(state);
   yearHeader.style.width = monthHeader.style.width = (tc * COL) + 'px';
-  state.years.forEach(yr => {
+  state.years.forEach((yr, yearIndex) => {
     const yb = document.createElement('div');
     yb.className = 'yr-block';
     yb.style.width = (COL * 12) + 'px';
     yb.textContent = yr;
     yearHeader.appendChild(yb);
     for (let m = 1; m <= 12; m++) {
+      const col = yearIndex * 12 + m - 1;
       const mc = document.createElement('div');
-      mc.className = 'mo-cell';
+      mc.className = ['mo-cell', getDiscussionPeriodClass(col, state)].filter(Boolean).join(' ');
       mc.style.width = COL + 'px';
       mc.textContent = m;
       monthHeader.appendChild(mc);
@@ -955,8 +997,8 @@ function renderGrid(state) {
 
   getPlanLanes(state).forEach(lane => {
     const sr = lane.type === 'branch'
-      ? makeBranchSubRow(tc, lane.branchId, 'branch', lane.label)
-      : makeSubRow(tc, lane.variantId, 'plan');
+      ? makeBranchSubRow(tc, lane.branchId, 'branch', lane.label, state)
+      : makeSubRow(tc, lane.variantId, 'plan', state);
     grp.appendChild(sr);
   });
 
@@ -968,8 +1010,8 @@ function renderGrid(state) {
 
   getActualLanes(state).forEach((lane, index) => {
     const sr = lane.type === 'actualBranch'
-      ? makeBranchSubRow(tc, lane.branchId, 'actualBranch', lane.label)
-      : makeSubRow(tc, lane.variantId, 'actual');
+      ? makeBranchSubRow(tc, lane.branchId, 'actualBranch', lane.label, state)
+      : makeSubRow(tc, lane.variantId, 'actual', state);
     if (index === 0) sr.classList.add('actual-first');
     grp.appendChild(sr);
   });
@@ -978,6 +1020,7 @@ function renderGrid(state) {
   drawLines(grp, state);
   renderVariantLabels(state);
   renderCanvasRemarks(state);
+  renderMilestoneTableOverlay(state);
   renderMergeHint(state);
 }
 
@@ -989,7 +1032,7 @@ function renderEopLane(grp, tc, state) {
   row.style.position = 'relative';
   for (let col = 0; col < tc; col++) {
     const c = document.createElement('div');
-    c.className = 'g-cell eop-cell';
+    c.className = ['g-cell', 'eop-cell', getDiscussionPeriodClass(col, state)].filter(Boolean).join(' ');
     row.appendChild(c);
   }
   grp.appendChild(row);
@@ -1025,14 +1068,14 @@ function renderEopLane(grp, tc, state) {
   });
 }
 
-function makeSubRow(tc, vId, rType) {
+function makeSubRow(tc, vId, rType, state) {
   const sr = document.createElement('div');
   sr.className = 'grid-sub-row ' + (rType === 'plan' ? 'plan-sub' : 'actual-sub');
   sr.style.height = ROH + 'px';
   sr.style.position = 'relative';
   for (let col = 0; col < tc; col++) {
     const c = document.createElement('div');
-    c.className = 'g-cell';
+    c.className = ['g-cell', getDiscussionPeriodClass(col, state)].filter(Boolean).join(' ');
     c.dataset.col = col;
     c.dataset.vId = vId;
     c.dataset.rType = rType;
@@ -1043,14 +1086,14 @@ function makeSubRow(tc, vId, rType) {
   return sr;
 }
 
-function makeBranchSubRow(tc, branchId, rType, label) {
+function makeBranchSubRow(tc, branchId, rType, label, state) {
   const sr = document.createElement('div');
   sr.className = 'grid-sub-row branch-sub' + (rType === 'actualBranch' ? ' actual-branch-sub' : '');
   sr.style.height = ROH + 'px';
   sr.style.position = 'relative';
   for (let col = 0; col < tc; col++) {
     const c = document.createElement('div');
-    c.className = 'g-cell';
+    c.className = ['g-cell', getDiscussionPeriodClass(col, state)].filter(Boolean).join(' ');
     c.dataset.col = col;
     c.dataset.branchId = branchId;
     c.dataset.rType = rType;
@@ -1148,9 +1191,8 @@ function drawRelationshipArrows(grp, state) {
 
   state.branches.forEach(br => {
     const firstChild = getFirstBranchNode(br.id, state);
-    if (!firstChild) return;
     const from = getBranchSourcePoint(br, state);
-    const to = getBranchNodeCenter(firstChild, state);
+    const to = firstChild ? getBranchNodeCenter(firstChild, state) : getBranchLaneAnchorPoint(br, state);
     if (!from || !to) return;
     addArrowPath(svg, from, to, 'branch-start-arrow', 'branchStartArrow');
     hasArrows = true;
@@ -1172,6 +1214,7 @@ function drawRelationshipArrows(grp, state) {
     const from = getStageCenterByContext(source, shift.sourceContext, state);
     const to = getStageShiftTargetCenter(shift, source, state);
     if (!from || !to) return;
+    addStageShiftConnectorLine(svg, from, to, shift.mode);
     addStageShiftArrow(svg, from, to, shift.mode);
     hasArrows = true;
   });
@@ -1218,7 +1261,13 @@ function addMergeBackPath(svg, from, to) {
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   path.setAttribute('class', 'merge-link-arrow');
   path.setAttribute('d', `M ${from.x} ${from.y} L ${to.x} ${from.y} L ${to.x} ${to.y}`);
-  path.setAttribute('marker-end', 'url(#mergeLinkArrow)');
+  svg.appendChild(path);
+}
+
+function addStageShiftConnectorLine(svg, from, to, mode) {
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('class', `stage-shift-normal-line ${mode}-shift-line`);
+  path.setAttribute('d', `M ${from.x} ${from.y} L ${to.x} ${to.y}`);
   svg.appendChild(path);
 }
 
@@ -1426,10 +1475,10 @@ function mkShiftedNode(source, shift) {
 function renderBottomTables(state) {
   state = state || store.getState();
   renderDynTable('msTableWrap', state.leftTable, {
-    updateCell: (ri, ci, v) => { store.getState().updateLeftTableCell(ri, ci, v); scheduleDraftSave(); },
-    updateColName: (ci, name) => { store.getState().updateLeftTableColName(ci, name); scheduleDraftSave(); },
-    deleteCol: (ci) => { store.getState().deleteLeftTableCol(ci); renderBottomTables(); persistDraftNow(); },
-    deleteRow: (ri) => { store.getState().deleteLeftTableRow(ri); renderBottomTables(); persistDraftNow(); },
+    updateCell: (ri, ci, v) => { store.getState().updateLeftTableCell(ri, ci, v); renderMilestoneTableOverlay(store.getState()); scheduleDraftSave(); },
+    updateColName: (ci, name) => { store.getState().updateLeftTableColName(ci, name); renderMilestoneTableOverlay(store.getState()); scheduleDraftSave(); },
+    deleteCol: (ci) => { store.getState().deleteLeftTableCol(ci); renderBottomTables(); renderMilestoneTableOverlay(store.getState()); persistDraftNow(); },
+    deleteRow: (ri) => { store.getState().deleteLeftTableRow(ri); renderBottomTables(); renderMilestoneTableOverlay(store.getState()); persistDraftNow(); },
   });
   renderDynTable('eopTableWrap', state.rightTable, {
     updateCell: (ri, ci, v) => { store.getState().updateRightTableCell(ri, ci, v); scheduleDraftSave(); },
@@ -1556,6 +1605,52 @@ function renderCanvasRemarks(state) {
   tlGrid.appendChild(el);
 }
 
+function renderMilestoneTableOverlay(state) {
+  tlGrid.querySelectorAll('.milestone-grid-table').forEach(e => e.remove());
+  if (!state.milestoneTableVisible) return;
+  const data = getMilestoneTableRows(state);
+  if (!data.cols.length || !data.rows.length) return;
+
+  const el = document.createElement('div');
+  el.className = 'milestone-grid-table';
+  el.dataset.labelKey = 'milestone:table';
+  const defaultPos = { x: 132, y: getTopOffset(state) + 14 };
+  const pos = state.labelPositions['milestone:table'] || defaultPos;
+  el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
+
+  const title = document.createElement('div');
+  title.className = 'milestone-grid-title';
+  title.textContent = 'Milestone Table';
+  el.appendChild(title);
+
+  const table = document.createElement('table');
+  const thead = document.createElement('thead');
+  const htr = document.createElement('tr');
+  data.cols.forEach(col => {
+    const th = document.createElement('th');
+    th.textContent = col;
+    htr.appendChild(th);
+  });
+  thead.appendChild(htr);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  data.rows.forEach(row => {
+    const tr = document.createElement('tr');
+    row.forEach(cell => {
+      const td = document.createElement('td');
+      td.textContent = cell;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  el.appendChild(table);
+
+  el.addEventListener('mousedown', startMilestoneTableDrag);
+  tlGrid.appendChild(el);
+}
+
 function renderMergeHint(state) {
   tlGrid.querySelectorAll('.merge-target-hint').forEach(e => e.remove());
   if (!mergePick) return;
@@ -1637,6 +1732,7 @@ let modalCb = null;
 let dragVL = null, dvox = 0, dvoy = 0;
 let dragRemark = null, drox = 0, droy = 0;
 let dragDrsLabel = null, ddlx = 0, ddly = 0;
+let dragMilestoneTable = null, dmox = 0, dmoy = 0;
 let mergePick = null;
 
 // ── Header form ──
@@ -2071,6 +2167,41 @@ function onRemarkUp(e) {
   persistDraftNow();
 }
 
+// ── Drag milestone table ──
+function startMilestoneTableDrag(e) {
+  e.preventDefault();
+  dragMilestoneTable = e.currentTarget;
+  const r = dragMilestoneTable.getBoundingClientRect();
+  dmox = e.clientX - r.left; dmoy = e.clientY - r.top;
+  dragMilestoneTable.style.zIndex = '27';
+  document.addEventListener('mousemove', onMilestoneTableMove);
+  document.addEventListener('mouseup', onMilestoneTableUp);
+}
+
+function onMilestoneTableMove(e) {
+  if (!dragMilestoneTable) return;
+  const gr = tlGrid.getBoundingClientRect();
+  dragMilestoneTable.style.left = (e.clientX - gr.left - dmox) + 'px';
+  dragMilestoneTable.style.top = (e.clientY - gr.top - dmoy) + 'px';
+}
+
+function onMilestoneTableUp(e) {
+  if (!dragMilestoneTable) return;
+  const gr = tlGrid.getBoundingClientRect();
+  const key = dragMilestoneTable.dataset.labelKey;
+  if (key) {
+    store.getState().setLabelPosition(key, {
+      x: e.clientX - gr.left - dmox,
+      y: e.clientY - gr.top - dmoy,
+    });
+  }
+  dragMilestoneTable.style.zIndex = '9';
+  dragMilestoneTable = null;
+  document.removeEventListener('mousemove', onMilestoneTableMove);
+  document.removeEventListener('mouseup', onMilestoneTableUp);
+  persistDraftNow();
+}
+
 // ── Drag DRS detail labels ──
 function startDrsLabelDrag(e) {
   e.preventDefault();
@@ -2125,6 +2256,11 @@ $('addYearBtn').addEventListener('click', () => {
 // ── Submit / Back ──
 $('submitBtn').addEventListener('click', async () => {
   const state = store.getState();
+  if (getMilestoneTableRows(state).rows.length) {
+    store.getState().showMilestoneTable();
+    renderAll();
+    persistDraftNow();
+  }
   const parsedEopItems = parseEopItems(state);
   if (!parsedEopItems.length) {
     alert('Enter at least one EOP date in a Date/Month column as YYYY-MM (use the month picker).');

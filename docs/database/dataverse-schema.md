@@ -42,6 +42,7 @@ Primary name column: `pt_name`
 | Project Type | `pt_projecttype` | Text | No | Example: MC |
 | Status | `pt_status` | Choice `pt_projectstatus` | No | Current status |
 | Published | `pt_published` | Yes/No | No | Publish flag |
+| Discussion Period Date | `pt_discussionperioddate` | Text | No | Discussion month in `YYYY-MM`; currently browser default, future backend input |
 | EOP Date | `pt_eopdate` | Date only | No | Primary/first parsed EOP month/date |
 | EOP Dates JSON | `pt_eopdatesjson` | Multiple lines of text | No | All parsed EOP markers from the EOP table |
 | Stage Shifts JSON | `pt_stageshiftsjson` | Multiple lines of text | No | Preponed/postponed visual markers for stages |
@@ -58,10 +59,10 @@ Alternate key:
 
 Example `Project` rows:
 
-| pt_name | pt_externalid | pt_location | pt_plant | pt_projecttype | pt_status | pt_published | pt_eopdate | pt_yearsjson | pt_remarks | pt_milestonetablejson | pt_eoptablejson | pt_layoutjson | pt_lastsubmittedon |
-|---|---|---|---|---|---|---:|---|---|---|---|---|---|---|
-| Swift Facelift 2024 | local-1716100000000 | SMG | Plant-C | MC | Delayed | No | 2025-03-01 | `[2024,2025]` | Review EOP risk monthly | `{"cols":["Milestone","DOM Gas","DOM CNG"],"rows":[["DA","2024-06","2024-07"],["SOS","2024-10","2024-11"]]}` | `{"cols":["Model Detail","Date- month/year"],"rows":[["EOP","Mar 2025"]]}` | `{"labelPositions":{"plan:v1":{"x":50,"y":38}},"remarkPosition":{"x":120,"y":292},"nid":50}` | 2026-05-19 10:30 |
-| Compact SUV Refresh | local-1716200000000 | Pune | Plant-A | FMC | On Track | Yes | 2026-08-01 | `[2025,2026]` | Published baseline | `{"cols":["Milestone","EV"],"rows":[["Kickoff","2025-04"]]}` | `{"cols":["Model Detail","Date- month/year"],"rows":[["EOP","Aug 2026"]]}` | `{"labelPositions":{},"remarkPosition":null,"nid":12}` | 2026-05-19 11:00 |
+| pt_name | pt_externalid | pt_location | pt_plant | pt_projecttype | pt_status | pt_published | pt_discussionperioddate | pt_eopdate | pt_yearsjson | pt_remarks | pt_milestonetablejson | pt_eoptablejson | pt_layoutjson | pt_lastsubmittedon |
+|---|---|---|---|---|---|---:|---|---|---|---|---|---|---|---|
+| Swift Facelift 2024 | local-1716100000000 | SMG | Plant-C | MC | Delayed | No | 2024-09 | 2025-03-01 | `[2024,2025]` | Review EOP risk monthly | `{"cols":["Milestone","DOM Gas","DOM CNG"],"rows":[["DA","2024-06","2024-07"],["SOS","2024-10","2024-11"]]}` | `{"cols":["Model Detail","Date- month/year"],"rows":[["EOP","Mar 2025"]]}` | `{"labelPositions":{"plan:v1":{"x":50,"y":38}},"remarkPosition":{"x":120,"y":292},"nid":50}` | 2026-05-19 10:30 |
+| Compact SUV Refresh | local-1716200000000 | Pune | Plant-A | FMC | On Track | Yes | 2025-11 | 2026-08-01 | `[2025,2026]` | Published baseline | `{"cols":["Milestone","EV"],"rows":[["Kickoff","2025-04"]]}` | `{"cols":["Model Detail","Date- month/year"],"rows":[["EOP","Aug 2026"]]}` | `{"labelPositions":{},"remarkPosition":null,"nid":12}` | 2026-05-19 11:00 |
 
 ## Table: Project Variant
 

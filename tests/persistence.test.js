@@ -30,6 +30,9 @@ module.exports = {
   canAddStageShift,
   addStageShiftData,
   removeStageShiftsForNodeData,
+  getMilestoneTableRows: typeof getMilestoneTableRows === 'function' ? getMilestoneTableRows : undefined,
+  getDiscussionPeriodCols: typeof getDiscussionPeriodCols === 'function' ? getDiscussionPeriodCols : undefined,
+  getDiscussionPeriodClass: typeof getDiscussionPeriodClass === 'function' ? getDiscussionPeriodClass : undefined,
 };`;
 
   const sandbox = {
@@ -67,6 +70,36 @@ test('isDirty compares a draft against the last server baseline', () => {
   assert.equal(persistence.isDirty(draft, baseline), true);
 });
 
+test('getDiscussionPeriodCols returns previous current and next discussion columns', () => {
+  assert.deepEqual(toPlain(persistence.getDiscussionPeriodCols({ years: [2024, 2025], discussionDate: '2024-09' })), {
+    prev: 7,
+    current: 8,
+    next: 9,
+  });
+});
+
+test('getDiscussionPeriodCols clips discussion columns at visible year boundaries', () => {
+  assert.deepEqual(toPlain(persistence.getDiscussionPeriodCols({ years: [2024, 2025], discussionDate: '2024-01' })), {
+    prev: null,
+    current: 0,
+    next: 1,
+  });
+  assert.deepEqual(toPlain(persistence.getDiscussionPeriodCols({ years: [2024, 2025], discussionDate: '2025-12' })), {
+    prev: 22,
+    current: 23,
+    next: null,
+  });
+});
+
+test('getDiscussionPeriodClass identifies highlighted discussion columns', () => {
+  const state = { years: [2024, 2025], discussionDate: '2024-09' };
+
+  assert.equal(persistence.getDiscussionPeriodClass(7, state), 'discussion-prev');
+  assert.equal(persistence.getDiscussionPeriodClass(8, state), 'discussion-current');
+  assert.equal(persistence.getDiscussionPeriodClass(9, state), 'discussion-next');
+  assert.equal(persistence.getDiscussionPeriodClass(10, state), '');
+});
+
 test('createDataversePayload maps state into simple Dataverse entity groups', () => {
   const state = {
     projectId: 'local-1',
@@ -92,6 +125,7 @@ test('createDataversePayload maps state into simple Dataverse entity groups', ()
 
   assert.equal(payload.project.name, 'Alpha');
   assert.equal(payload.project.published, true);
+  assert.equal(payload.project.discussion_period_date, '');
   assert.deepEqual(toPlain(payload.variants), [{ external_id: 'v1', name: 'DOM Gas', display_order: 0 }]);
   assert.equal(payload.stages.length, 2);
   assert.equal(payload.stages[0].stage_context, 'plan');
@@ -108,6 +142,29 @@ test('createDataversePayload maps state into simple Dataverse entity groups', ()
   }]);
   assert.equal(JSON.parse(payload.project.milestone_table_json).cols[0], 'Milestone');
   assert.equal(JSON.parse(payload.project.layout_json).labelPositions['plan:v1'].x, 10);
+});
+
+test('createDataversePayload includes discussion period date', () => {
+  const payload = persistence.createDataversePayload({
+    projectId: 'local-1',
+    info: { project: 'Alpha' },
+    variants: [],
+    planNodes: [],
+    actualNodes: [],
+    branches: [],
+    branchNodes: [],
+    actualBranchNodes: [],
+    mergeLinks: [],
+    stageShifts: [],
+    leftTable: { cols: [], rows: [] },
+    rightTable: { cols: [], rows: [] },
+    years: [2024, 2025],
+    eopDate: '',
+    eopItems: [],
+    discussionDate: '2024-09',
+  });
+
+  assert.equal(payload.project.discussion_period_date, '2024-09');
 });
 
 test('parseEopItems returns ordered EOP markers from multiple table rows', () => {
@@ -342,10 +399,52 @@ test('stage shift arrows use quadratic arch paths without replacing timeline lin
   const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 
   assert.match(source, /function addStageShiftArrow/);
+  assert.match(source, /function addStageShiftConnectorLine/);
   assert.match(source, /Q \$\{midX\} \$\{archY\}/);
   assert.match(source, /stage-shift-arrow-outline/);
+  assert.match(source, /stage-shift-normal-line/);
   assert.match(source, /marker-end', `url\(#\$\{markerId\}\)`/);
   assert.match(source, /function mkLine/);
+});
+
+test('branch source connector renders even before the branch has stages', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+
+  assert.match(source, /function getBranchLaneAnchorPoint/);
+  assert.match(source, /const to = firstChild \? getBranchNodeCenter\(firstChild, state\) : getBranchLaneAnchorPoint\(br, state\)/);
+});
+
+test('merge back connector is a plain orthogonal line without an arrow marker', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const start = source.indexOf('function addMergeBackPath');
+  const end = source.indexOf('function addStageShiftConnectorLine');
+
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const fn = source.slice(start, end);
+  assert.match(fn, /M \$\{from\.x\} \$\{from\.y\} L \$\{to\.x\} \$\{from\.y\} L \$\{to\.x\} \$\{to\.y\}/);
+  assert.equal(fn.includes('marker-end'), false);
+});
+
+test('getMilestoneTableRows returns filled milestone rows for grid rendering', () => {
+  const rows = persistence.getMilestoneTableRows({
+    leftTable: {
+      cols: ['Milestone', 'DOM Gas', 'DOM CNG'],
+      rows: [
+        ['DA', 'Done', ''],
+        ['', '', ''],
+        ['SOS', '', 'Oct'],
+      ],
+    },
+  });
+
+  assert.deepEqual(toPlain(rows), {
+    cols: ['Milestone', 'DOM Gas', 'DOM CNG'],
+    rows: [
+      ['DA', 'Done', ''],
+      ['SOS', '', 'Oct'],
+    ],
+  });
 });
 
 test('removeBranchNodeData removes the branch row when the last branch stage is deleted', () => {

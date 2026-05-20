@@ -668,6 +668,41 @@ body {
   background: var(--s2);
 }
 
+.mo-cell.discussion-prev,
+.mo-cell.discussion-next,
+.g-cell.discussion-prev,
+.g-cell.discussion-next {
+  background: rgba(245, 158, 11, .12);
+}
+
+.mo-cell.discussion-current,
+.g-cell.discussion-current {
+  background: rgba(245, 158, 11, .24);
+  box-shadow: inset 1px 0 rgba(217, 119, 6, .35), inset -1px 0 rgba(217, 119, 6, .35);
+}
+
+.mo-cell.discussion-current {
+  color: #7c2d12;
+  font-weight: 800;
+}
+
+[data-theme="dark"] .mo-cell.discussion-prev,
+[data-theme="dark"] .mo-cell.discussion-next,
+[data-theme="dark"] .g-cell.discussion-prev,
+[data-theme="dark"] .g-cell.discussion-next {
+  background: rgba(245, 158, 11, .16);
+}
+
+[data-theme="dark"] .mo-cell.discussion-current,
+[data-theme="dark"] .g-cell.discussion-current {
+  background: rgba(245, 158, 11, .28);
+  box-shadow: inset 1px 0 rgba(251, 191, 36, .35), inset -1px 0 rgba(251, 191, 36, .35);
+}
+
+[data-theme="dark"] .mo-cell.discussion-current {
+  color: #fde68a;
+}
+
 .tl-grid {
   position: relative
 }
@@ -704,6 +739,15 @@ body {
 
 .g-cell:hover {
   background: rgba(37, 99, 235, .08)
+}
+
+.g-cell.discussion-prev:hover,
+.g-cell.discussion-next:hover {
+  background: rgba(245, 158, 11, .18);
+}
+
+.g-cell.discussion-current:hover {
+  background: rgba(245, 158, 11, .3);
 }
 
 .pa-grid-div {
@@ -762,6 +806,23 @@ body {
 
 .postponed-shift-arrow {
   stroke: #ea580c;
+}
+
+.stage-shift-normal-line {
+  fill: none;
+  stroke: rgba(15, 23, 42, .46);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: .8;
+}
+
+.preponed-shift-line {
+  stroke: rgba(220, 38, 38, .45);
+}
+
+.postponed-shift-line {
+  stroke: rgba(234, 88, 12, .48);
 }
 
 .merge-select-mode .merge-valid-target .node-shape {
@@ -1401,6 +1462,67 @@ body {
 
 [data-theme="dark"] .canvas-remark {
   background: rgba(22, 27, 34, .9);
+}
+
+/* ── MILESTONE TABLE OVERLAY ── */
+.milestone-grid-table {
+  position: absolute;
+  z-index: 9;
+  max-width: 420px;
+  border: 1px solid rgba(37, 99, 235, .32);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, .16);
+  cursor: move;
+  user-select: none;
+}
+
+.milestone-grid-title {
+  padding: 6px 9px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--accent);
+  background: rgba(37, 99, 235, .08);
+  border-bottom: 1px solid rgba(37, 99, 235, .18);
+}
+
+.milestone-grid-table table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 11px;
+}
+
+.milestone-grid-table th,
+.milestone-grid-table td {
+  max-width: 120px;
+  padding: 5px 8px;
+  border: 1px solid rgba(148, 163, 184, .35);
+  color: var(--text);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.milestone-grid-table th {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--muted);
+  background: rgba(241, 245, 249, .88);
+}
+
+[data-theme="dark"] .milestone-grid-table {
+  background: rgba(22, 27, 34, .94);
+  border-color: rgba(88, 166, 255, .32);
+}
+
+[data-theme="dark"] .milestone-grid-title {
+  background: rgba(88, 166, 255, .12);
+}
+
+[data-theme="dark"] .milestone-grid-table th {
+  background: rgba(33, 38, 45, .95);
 }
 
 /* ── POPUP ── */
