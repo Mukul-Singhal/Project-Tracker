@@ -42,7 +42,9 @@ Primary name column: `pt_name`
 | Project Type | `pt_projecttype` | Text | No | Example: MC |
 | Status | `pt_status` | Choice `pt_projectstatus` | No | Current status |
 | Published | `pt_published` | Yes/No | No | Publish flag |
-| EOP Date | `pt_eopdate` | Date only | No | Parsed EOP month/date |
+| EOP Date | `pt_eopdate` | Date only | No | Primary/first parsed EOP month/date |
+| EOP Dates JSON | `pt_eopdatesjson` | Multiple lines of text | No | All parsed EOP markers from the EOP table |
+| Stage Shifts JSON | `pt_stageshiftsjson` | Multiple lines of text | No | Preponed/postponed visual markers for stages |
 | Years JSON | `pt_yearsjson` | Multiple lines of text | No | Example: `[2024,2025]` |
 | Remarks | `pt_remarks` | Multiple lines of text | No | User remarks |
 | Milestone Table JSON | `pt_milestonetablejson` | Multiple lines of text | No | Dynamic table data |
@@ -108,8 +110,11 @@ Primary name column: `pt_name`
 | External Branch Id | `pt_externalid` | Text | Yes | From browser state branch id |
 | Project | `pt_projectid` | Lookup to `Project` | Yes | Useful for querying |
 | Variant | `pt_variantid` | Lookup to `Project Variant` | Yes | Parent variant |
-| Parent Stage External Id | `pt_parentstageexternalid` | Text | Yes | Browser id of parent planned stage |
+| Parent Stage External Id | `pt_parentstageexternalid` | Text | No | Browser id of parent planned stage when branch starts from a stage |
 | Parent Planned Stage | `pt_parentstageid` | Lookup to `Timeline Stage` | No | Can be linked after stages are created |
+| Source Stage External Id | `pt_sourcestageexternalid` | Text | No | Same as parent stage for stage-created branches |
+| Source Month Text | `pt_sourcemonthtext` | Text | No | Branch source month, example: `2024-06` |
+| Source Column Index | `pt_sourcecolumnindex` | Whole number | No | Branch source grid column for month-created branches |
 | Display Order | `pt_displayorder` | Whole number | No | Branch ordering |
 
 Alternate key:
@@ -154,6 +159,7 @@ Primary name column: `pt_name`
 | Bottom Label | `pt_bottomlabel` | Text | No | Optional |
 | DRS Available | `pt_isdrs` | Yes/No | No | Whether DRS is available for this stage |
 | DRS Detail | `pt_drsdetail` | Multiple lines of text | No | Optional DRS notes/details |
+| Source Plan Stage External Id | `pt_sourceplanstageexternalid` | Text | No | Populated for Actual rows copied from Plan |
 | Display Order | `pt_displayorder` | Whole number | No | Stable ordering |
 
 Alternate key:
@@ -199,9 +205,11 @@ Primary name column: `pt_name`
 | Project | `pt_projectid` | Lookup to `Project` | Yes | Parent project |
 | Branch | `pt_branchid` | Lookup to `Timeline Branch` | Yes | Source branch |
 | Source Branch Stage | `pt_sourcestageid` | Lookup to `Timeline Stage` | Yes | Branch node |
-| Target Planned Stage | `pt_targetstageid` | Lookup to `Timeline Stage` | Yes | Plan node |
+| Target Planned Stage | `pt_targetstageid` | Lookup to `Timeline Stage` | No | Plan node when a stage exists in the selected merge month |
 | Source Stage External Id | `pt_sourcestageexternalid` | Text | Yes | Useful during sync |
-| Target Stage External Id | `pt_targetstageexternalid` | Text | Yes | Useful during sync |
+| Target Stage External Id | `pt_targetstageexternalid` | Text | No | Useful during sync when target is a stage |
+| Target Month Text | `pt_targetmonthtext` | Text | No | Selected merge month when target is a month anchor |
+| Target Column Index | `pt_targetcolumnindex` | Whole number | No | Selected merge grid column |
 
 Alternate key:
 
@@ -214,6 +222,13 @@ Relationships:
 - `Timeline Branch` 1:N `Branch Merge Link`
 - `Timeline Stage` 1:N `Branch Merge Link` for source stage
 - `Timeline Stage` 1:N `Branch Merge Link` for target stage
+
+App behavior:
+
+- Only the last Branch Plan stage can create a merge link.
+- The selected merge month is unrestricted; it can be before, on, or after main variant stages.
+- If a Plan stage exists in the selected merge month, `pt_targetstageid` / `pt_targetstageexternalid` may be populated. Otherwise the app stores the month anchor through `pt_targetmonthtext` and `pt_targetcolumnindex`.
+- Runtime rendering draws the merge as a green horizontal-then-vertical 90-degree connector back to the main Plan timeline. When the merge month is beyond the last main Plan stage, the browser extends the main blue timeline line visually to that month.
 
 Example `Branch Merge Link` rows:
 
@@ -241,6 +256,8 @@ For the simplest implementation, delete all child records for the project and re
 
 - Use lookup columns for relationships.
 - Use multiple lines of text for JSON fields.
+- `pt_stageshiftsjson` stores visual preponed/postponed markers as `{ id, sourceNodeId, sourceContext, mode, targetDate, targetCol }`. These markers render as shifted stage copies with SVG quadratic Bezier arch arrows and do not replace normal stage records or normal timeline lines.
+- Deleting a Timeline Branch in the browser removes its Branch Plan stages, Branch Actual stages, merge links, and stage shifts whose source stage belonged to that branch.
 - Use alternate keys for browser external ids so Submit can upsert instead of duplicate.
 - Use cascade delete from `Project` to child tables.
 - Dataverse stores the submitted server state. Browser `localStorage` stores the unsaved draft and last submitted baseline.

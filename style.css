@@ -732,12 +732,36 @@ body {
 
 .merge-link-arrow {
   fill: none;
-  stroke: #7c3aed;
+  stroke: #00c9b1;
   stroke-width: 2;
-  stroke-dasharray: 6 5;
   stroke-linejoin: round;
   stroke-linecap: round;
-  opacity: .92;
+  opacity: .95;
+}
+
+.stage-shift-arrow-outline {
+  fill: none;
+  stroke: rgba(255, 255, 255, .95);
+  stroke-width: 6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: .96;
+}
+
+.stage-shift-arrow {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: .95;
+}
+
+.preponed-shift-arrow {
+  stroke: #dc2626;
+}
+
+.postponed-shift-arrow {
+  stroke: #ea580c;
 }
 
 .merge-select-mode .merge-valid-target .node-shape {
@@ -814,6 +838,58 @@ body {
   transform: scale(1.12)
 }
 
+.shifted-node {
+  z-index: 7;
+  cursor: default;
+  pointer-events: none;
+}
+
+.shifted-node .node-shape {
+  border-style: dashed;
+  background: #fff7f7;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, .12);
+}
+
+.shifted-postponed .node-shape {
+  background: #fff7ed;
+  border-color: #ea580c;
+  box-shadow: 0 0 0 3px rgba(234, 88, 12, .14);
+}
+
+.node-shift-cross {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 9;
+  transform: translate(-50%, -50%);
+  color: #dc2626;
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .8);
+}
+
+.shift-mode-label {
+  position: absolute;
+  top: calc(100% + 14px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgba(220, 38, 38, .1);
+  color: #991b1b;
+  font-size: 8px;
+  font-weight: 800;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.shifted-postponed .shift-mode-label {
+  background: rgba(234, 88, 12, .12);
+  color: #9a3412;
+}
+
 .node-label-top {
   position: absolute;
   bottom: calc(100% + 2px);
@@ -885,15 +961,40 @@ body {
   left: 8px;
   top: 4px;
   z-index: 3;
-  pointer-events: none;
+  pointer-events: auto;
   background: rgba(0, 201, 177, .12);
   border: 1px solid rgba(0, 201, 177, .35);
   color: #00c9b1;
   font-size: 9px;
   font-weight: 700;
-  padding: 2px 8px;
+  padding: 2px 5px 2px 8px;
   border-radius: 10px;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.branch-pill-del {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(232, 64, 64, .14);
+  color: #e84040;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  line-height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.branch-pill-del:hover {
+  background: #e84040;
+  color: #fff;
 }
 
 .actual-branch-sub {
@@ -905,6 +1006,8 @@ body {
   background: rgba(249, 115, 22, .12);
   border-color: rgba(249, 115, 22, .35);
   color: var(--actual);
+  pointer-events: none;
+  padding: 2px 8px;
 }
 
 /* ── EOP LANE ── */
@@ -932,6 +1035,24 @@ body {
   font-size: 20px;
   font-weight: 900;
   line-height: 1;
+  pointer-events: none;
+}
+
+.eop-label {
+  position: absolute;
+  z-index: 6;
+  max-width: 130px;
+  padding: 2px 6px;
+  border: 1px solid rgba(232, 64, 64, .32);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .86);
+  color: #a82020;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   pointer-events: none;
 }
 
@@ -1596,19 +1717,34 @@ input[type="month"] {
   border-color: var(--plan);
 }
 
-/* ── DRS badge on nodes ── */
-.node-drs-badge {
+.drs-detail-label {
   position: absolute;
-  top: -6px;
-  right: -4px;
-  background: #7c3aed;
-  color: #fff;
-  font-size: 8px;
+  z-index: 8;
+  max-width: 150px;
+  min-height: 20px;
+  padding: 4px 7px;
+  border: 1px solid rgba(37, 99, 235, .32);
+  border-radius: 6px;
+  background: rgba(232, 240, 249, .94);
+  color: var(--text);
+  font-size: 10px;
   font-weight: 700;
-  padding: 1px 4px;
-  border-radius: 4px;
-  pointer-events: none;
-  letter-spacing: .3px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 4px 10px rgba(20, 40, 80, .14);
+  cursor: move;
+  user-select: none;
+}
+
+[data-theme="dark"] .eop-label {
+  background: rgba(37, 45, 69, .92);
+  color: #fecaca;
+}
+
+[data-theme="dark"] .drs-detail-label {
+  background: rgba(37, 45, 69, .96);
 }
 
 /* ── Month input in EOP table ── */

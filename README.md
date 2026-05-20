@@ -124,13 +124,13 @@ flowchart TD
     STATE[(State)] --> GL[getPlanLanes\ngetActualLanes]
     GL --> LI[findPlanLaneIndex\nfindActualLaneIndex]
     LI --> PC[getPlanNodeCenter\ngetBranchNodeCenter]
-    PC --> RA[drawRelationshipArrows\nSVG branch+merge arrows]
+    PC --> RA[drawRelationshipArrows\nSVG branch, merge, and shift arrows]
 
     STATE --> DTC[dateToCol]
     DTC --> RG[renderGrid\nrenderEopLane]
 
-    STATE --> PEL[parseEopDate]
-    PEL --> SUB[Submit handler\nsets eopDate on store]
+    STATE --> PEL[parseEopItems]
+    PEL --> SUB[Submit handler\nsets eopDate + eopItems on store]
 ```
 
 All domain functions are **pure** — they take `state` as a parameter and return values without side effects.
@@ -140,7 +140,7 @@ All domain functions are **pure** — they take `state` as a parameter and retur
 ## Features
 
 ### Variants and Lanes
-Each variant gets a **Plan** lane and an **Actual** lane. Variants can have child **Branches** (sub-lanes) that branch off a plan node and optionally merge back via **Merge Links** (purple dashed SVG arrows).
+Each variant gets a **Plan** lane and an **Actual** lane. Variants can have child **Branches** (sub-lanes) that branch from a main Plan stage or a main Plan month cell at or after that variant's first Plan stage. Branches can merge from their last branch stage to any selected month. If a merge lands beyond the last main Plan stage, the main blue timeline extends to the merge month so the green merge-back connector has a visible landing line.
 
 ### Stage Nodes
 Click any grid cell to add a stage. Each stage has:
@@ -148,11 +148,15 @@ Click any grid cell to add a stage. Each stage has:
 - **Month** (date picker)
 - **Shape** — square or circle
 - **Is DRS Available?** — checkbox; when checked, a DRS Details textarea appears
+- **DRS Details label** — when DRS is checked and details are provided, the detail text appears as a draggable compact label beside the node on the timeline
 
-Stages are draggable horizontally within their lane. Right-click for context menu (branch, merge, delete).
+Stages are draggable horizontally within their lane. Right-click eligible Plan stages or Plan month cells to create branches. Only the last stage in a branch can merge to a selected month, and the merge renders as a green horizontal-then-vertical 90-degree connector back to the main Plan timeline. Branch pills include a delete control that removes the branch row, branch stages, actual branch stages, merge links, and branch-owned shift markers. Right-click any stage to add a Preponed or Postponed marker; the original stage stays in place with a red cross, and a shifted copy appears at the selected month. Shift arrows use an SVG quadratic Bezier arch with a double-lined body and an open arrowhead, while the normal stage-to-stage timeline line remains unchanged.
 
 ### EOP Table
-The EOP table's date column (any column whose header contains "date" or "month") renders an `<input type="month">` picker. The value is stored as `YYYY-MM` and used directly by the submit handler to set the EOP lane on the timeline.
+The EOP table's date columns (any column whose header contains "date" or "month") render `<input type="month">` pickers. Submit parses every filled EOP row/date cell into `eopItems`, keeps the first item as the backward-compatible `eopDate`, and renders all EOP items as X markers in one EOP lane.
+
+### Copy to Actual
+The `Copy to Actual` header button syncs Plan stages into Actual stages and Plan branch stages into Actual branch stages. Existing copied Actual stages are overwritten from their source Plan stages, missing copied stages are created, and manual Actual stages without a `sourcePlanNodeId` are preserved.
 
 ### PDF Export
 Captures the full `.app` element via `html2canvas` and exports as A4 landscape PDF using `jsPDF`. Control buttons are hidden during capture.
