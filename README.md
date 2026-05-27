@@ -140,17 +140,18 @@ All domain functions are **pure** — they take `state` as a parameter and retur
 ## Features
 
 ### Variants and Lanes
-Each variant gets a **Plan** lane and an **Actual** lane. Variants can have child **Branches** (sub-lanes) that branch from a main Plan stage or a main Plan month cell at or after that variant's first Plan stage. Branches can merge from their last branch stage to any selected month. If a merge lands beyond the last main Plan stage, the main blue timeline extends to the merge month so the green merge-back connector has a visible landing line.
+Each variant gets a **Plan** lane and an **Actual** lane. Variants can have child **Branches** (sub-lanes) in either section. Plan branches are independent from Actual branches: Plan branches start from Plan stages/months and merge back to the Plan timeline, while Actual branches start from Actual stages/months and merge back to the Actual timeline. If a merge lands beyond the last main stage in its section, that section's timeline extends to the merge month so the connector has a visible landing line.
 
 ### Stage Nodes
 Click any grid cell to add a stage. Each stage has:
-- **Top / Bottom labels**
-- **Month** (date picker)
+- **Top label**
+- **Plan bottom label** — dropdown constrained to `Beg`, `Mid`, or `End`
+- **Plan month / Actual date** — Plan stages use an optional month picker; if filled, the stage is placed in that month, otherwise it stays in the clicked month. Actual stages require a full date and are placed in that date's month.
 - **Shape** — square or circle
 - **Is DRS Available?** — checkbox; when checked, a DRS Details textarea appears
 - **DRS Details label** — when DRS is checked and details are provided, the detail text appears as a draggable compact label beside the node on the timeline
 
-Stages are draggable horizontally within their lane. Right-click eligible Plan stages or Plan month cells to create branches. Only the last stage in a branch can merge to a selected month, and the merge renders as a green horizontal-then-vertical 90-degree connector back to the main Plan timeline. Branch pills include a delete control that removes the branch row, branch stages, actual branch stages, merge links, and branch-owned shift markers. Right-click any stage to add a Preponed or Postponed marker; the original stage stays in place with a red cross, and a shifted copy appears at the selected month. Shift arrows use an SVG quadratic Bezier arch with a double-lined body and an open arrowhead, while the normal stage-to-stage timeline line remains unchanged.
+Plan stages render only the top label, shape, and bottom label. Actual stages render the top label, shape, and full-date marker as day and month. Clicking an existing stage opens the edit dialog for its top label and relevant bottom/date fields; dragging still moves the stage horizontally. Right-click eligible Plan or Actual stages/month cells to create branches in that same section. Only the last stage in a branch can merge to a selected month, and the merge renders as an orthogonal connector back to the matching main timeline. Branch pills include a delete control that removes that branch row, branch stages, merge links, and branch-owned shift markers without touching the other section. Right-click any stage to add a Preponed or Postponed marker; the original stage stays in place with a red cross, and a shifted copy appears at the selected month. New Preponed/Postponed markers require shift-specific DRS Details, which appear as a draggable compact label near the shifted copy. Shift arrows use an SVG quadratic Bezier arch with a double-lined body and an open arrowhead, while the normal stage-to-stage timeline line remains unchanged.
 
 ### EOP Table
 The EOP table's date columns (any column whose header contains "date" or "month") render `<input type="month">` pickers. Submit parses every filled EOP row/date cell into `eopItems`, keeps the first item as the backward-compatible `eopDate`, and renders all EOP items as X markers in one EOP lane.
@@ -159,7 +160,7 @@ The EOP table's date columns (any column whose header contains "date" or "month"
 The timeline highlights a discussion-period window across the month header and every grid row. The temporary browser-side default is `2024-09`; that month is highlighted strongly, with the month before and after shown as lighter context columns. The Dataverse payload includes `discussion_period_date` so the dummy value can be replaced by the backend-provided month later.
 
 ### Copy to Actual
-The `Copy to Actual` header button syncs Plan stages into Actual stages and Plan branch stages into Actual branch stages. Existing copied Actual stages are overwritten from their source Plan stages, missing copied stages are created, and manual Actual stages without a `sourcePlanNodeId` are preserved.
+The `Copy to Actual` header button syncs Plan stages into Actual stages and copies Plan branches into independent Actual branches. Existing copied Actual stages/branches are overwritten from their source Plan data, missing copied items are created, stale copied branches are removed, and manual Actual stages/branches without source ids are preserved.
 
 ### PDF Export
 Captures the full `.app` element via `html2canvas` and exports as A4 landscape PDF using `jsPDF`. Control buttons are hidden during capture.

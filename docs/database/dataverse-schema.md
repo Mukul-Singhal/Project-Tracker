@@ -25,6 +25,16 @@ Create these global choice columns first.
 - Square
 - Circle
 
+### `pt_branchcontext`
+
+- Plan
+- Actual
+
+### `pt_mergecontext`
+
+- Plan
+- Actual
+
 ## Table: Project
 
 Display name: `Project`
@@ -45,7 +55,7 @@ Primary name column: `pt_name`
 | Discussion Period Date | `pt_discussionperioddate` | Text | No | Discussion month in `YYYY-MM`; currently browser default, future backend input |
 | EOP Date | `pt_eopdate` | Date only | No | Primary/first parsed EOP month/date |
 | EOP Dates JSON | `pt_eopdatesjson` | Multiple lines of text | No | All parsed EOP markers from the EOP table |
-| Stage Shifts JSON | `pt_stageshiftsjson` | Multiple lines of text | No | Preponed/postponed visual markers for stages |
+| Stage Shifts JSON | `pt_stageshiftsjson` | Multiple lines of text | No | Preponed/postponed visual markers for stages, including shift-specific `drsDetail` for new markers |
 | Years JSON | `pt_yearsjson` | Multiple lines of text | No | Example: `[2024,2025]` |
 | Remarks | `pt_remarks` | Multiple lines of text | No | User remarks |
 | Milestone Table JSON | `pt_milestonetablejson` | Multiple lines of text | No | Dynamic table data |
@@ -109,13 +119,15 @@ Primary name column: `pt_name`
 |---|---|---:|---:|---|
 | Branch Label | `pt_name` | Text | Yes | Branch name |
 | External Branch Id | `pt_externalid` | Text | Yes | From browser state branch id |
+| Branch Context | `pt_branchcontext` | Choice `pt_branchcontext` | Yes | Plan or Actual branch |
 | Project | `pt_projectid` | Lookup to `Project` | Yes | Useful for querying |
 | Variant | `pt_variantid` | Lookup to `Project Variant` | Yes | Parent variant |
-| Parent Stage External Id | `pt_parentstageexternalid` | Text | No | Browser id of parent planned stage when branch starts from a stage |
-| Parent Planned Stage | `pt_parentstageid` | Lookup to `Timeline Stage` | No | Can be linked after stages are created |
+| Parent Stage External Id | `pt_parentstageexternalid` | Text | No | Browser id of parent Plan/Actual stage when branch starts from a stage |
+| Parent Stage | `pt_parentstageid` | Lookup to `Timeline Stage` | No | Can be linked after stages are created |
 | Source Stage External Id | `pt_sourcestageexternalid` | Text | No | Same as parent stage for stage-created branches |
 | Source Month Text | `pt_sourcemonthtext` | Text | No | Branch source month, example: `2024-06` |
 | Source Column Index | `pt_sourcecolumnindex` | Whole number | No | Branch source grid column for month-created branches |
+| Source Plan Branch External Id | `pt_sourceplanbranchexternalid` | Text | No | Populated when an Actual branch was copied from a Plan branch |
 | Display Order | `pt_displayorder` | Whole number | No | Branch ordering |
 
 Alternate key:
@@ -131,10 +143,10 @@ Relationships:
 
 Example `Timeline Branch` rows:
 
-| pt_name | pt_externalid | pt_projectid | pt_variantid | pt_parentstageexternalid | pt_parentstageid | pt_displayorder | pt_branchkey |
-|---|---|---|---|---|---|---:|---|
-| Gas variant branch | b1 | Project: Swift Facelift 2024 | Variant: DOM Gas | p1 | Stage: DA Plan | 0 | local-1716100000000:b1 |
-| CNG delay recovery | b2 | Project: Swift Facelift 2024 | Variant: DOM CNG | p3 | Stage: DA Plan CNG | 1 | local-1716100000000:b2 |
+| pt_name | pt_externalid | pt_branchcontext | pt_projectid | pt_variantid | pt_parentstageexternalid | pt_parentstageid | pt_sourceplanbranchexternalid | pt_displayorder | pt_branchkey |
+|---|---|---|---|---|---|---|---|---:|---|
+| Gas variant branch | b1 | Plan | Project: Swift Facelift 2024 | Variant: DOM Gas | p1 | Stage: DA Plan |  | 0 | local-1716100000000:b1 |
+| Actual recovery branch | ab1 | Actual | Project: Swift Facelift 2024 | Variant: DOM Gas | a1 | Stage: DA Actual | b1 | 0 | local-1716100000000:ab1 |
 
 ## Table: Timeline Stage
 
@@ -152,12 +164,12 @@ Primary name column: `pt_name`
 | Variant | `pt_variantid` | Lookup to `Project Variant` | No | Required for Plan/Actual stages |
 | Branch | `pt_branchid` | Lookup to `Timeline Branch` | No | Required for Branch Plan/Branch Actual |
 | Stage Context | `pt_stagecontext` | Choice `pt_stagecontext` | Yes | Plan, Actual, Branch Plan, Branch Actual |
-| Month | `pt_month` | Date only | No | Store as first day of month if needed |
-| Month Text | `pt_monthtext` | Text | No | Example: `2024-06`; useful if only month precision |
+| Month | `pt_month` | Date only | No | Store Plan months as first day of month if needed; Actual stages may use the exact actual date |
+| Month Text | `pt_monthtext` | Text | No | Plan example: `2024-06`; Actual stage payloads may contain `YYYY-MM-DD` |
 | Column Index | `pt_columnindex` | Whole number | Yes | Timeline grid column |
 | Shape | `pt_shape` | Choice `pt_stageshape` | No | Square/Circle |
 | Top Label | `pt_toplabel` | Text | No | Example: DA |
-| Bottom Label | `pt_bottomlabel` | Text | No | Optional |
+| Bottom Label | `pt_bottomlabel` | Text | No | Plan stages use `Beg`, `Mid`, or `End`; Actual stages leave this blank |
 | DRS Available | `pt_isdrs` | Yes/No | No | Whether DRS is available for this stage |
 | DRS Detail | `pt_drsdetail` | Multiple lines of text | No | Optional DRS notes/details |
 | Source Plan Stage External Id | `pt_sourceplanstageexternalid` | Text | No | Populated for Actual rows copied from Plan |
@@ -203,10 +215,11 @@ Primary name column: `pt_name`
 |---|---|---:|---:|---|
 | Merge Link Name | `pt_name` | Text | No | Generated label |
 | External Merge Link Id | `pt_externalid` | Text | Yes | From browser state |
+| Merge Context | `pt_mergecontext` | Choice `pt_mergecontext` | Yes | Plan or Actual merge |
 | Project | `pt_projectid` | Lookup to `Project` | Yes | Parent project |
 | Branch | `pt_branchid` | Lookup to `Timeline Branch` | Yes | Source branch |
 | Source Branch Stage | `pt_sourcestageid` | Lookup to `Timeline Stage` | Yes | Branch node |
-| Target Planned Stage | `pt_targetstageid` | Lookup to `Timeline Stage` | No | Plan node when a stage exists in the selected merge month |
+| Target Stage | `pt_targetstageid` | Lookup to `Timeline Stage` | No | Plan or Actual main-row node when a stage exists in the selected merge month |
 | Source Stage External Id | `pt_sourcestageexternalid` | Text | Yes | Useful during sync |
 | Target Stage External Id | `pt_targetstageexternalid` | Text | No | Useful during sync when target is a stage |
 | Target Month Text | `pt_targetmonthtext` | Text | No | Selected merge month when target is a month anchor |
@@ -226,17 +239,17 @@ Relationships:
 
 App behavior:
 
-- Only the last Branch Plan stage can create a merge link.
+- Only the last Branch Plan or Branch Actual stage can create a merge link.
 - The selected merge month is unrestricted; it can be before, on, or after main variant stages.
-- If a Plan stage exists in the selected merge month, `pt_targetstageid` / `pt_targetstageexternalid` may be populated. Otherwise the app stores the month anchor through `pt_targetmonthtext` and `pt_targetcolumnindex`.
-- Runtime rendering draws the merge as a green horizontal-then-vertical 90-degree connector back to the main Plan timeline. When the merge month is beyond the last main Plan stage, the browser extends the main blue timeline line visually to that month.
+- If a matching main-row stage exists in the selected merge month, `pt_targetstageid` / `pt_targetstageexternalid` may be populated. Otherwise the app stores the month anchor through `pt_targetmonthtext` and `pt_targetcolumnindex`.
+- Runtime rendering draws the merge as a horizontal-then-vertical connector back to the matching main Plan or Actual timeline. When the merge month is beyond the last main stage in that section, the browser extends that section's timeline line visually to that month.
 
 Example `Branch Merge Link` rows:
 
-| pt_name | pt_externalid | pt_projectid | pt_branchid | pt_sourcestageid | pt_targetstageid | pt_sourcestageexternalid | pt_targetstageexternalid | pt_mergelinkkey |
-|---|---|---|---|---|---|---|---|---|
-| Gas branch merges to SOS | m1 | Project: Swift Facelift 2024 | Branch: Gas variant branch | Stage: Trial Branch Stage | Stage: SOS Plan | bp1 | p2 | local-1716100000000:m1 |
-| CNG branch merges to DA | m2 | Project: Swift Facelift 2024 | Branch: CNG delay recovery | Stage: CNG Recovery Stage | Stage: DA Plan CNG | bp2 | p3 | local-1716100000000:m2 |
+| pt_name | pt_externalid | pt_mergecontext | pt_projectid | pt_branchid | pt_sourcestageid | pt_targetstageid | pt_sourcestageexternalid | pt_targetstageexternalid | pt_mergelinkkey |
+|---|---|---|---|---|---|---|---|---|---|
+| Gas branch merges to SOS | m1 | Plan | Project: Swift Facelift 2024 | Branch: Gas variant branch | Stage: Trial Branch Stage | Stage: SOS Plan | bp1 | p2 | local-1716100000000:m1 |
+| Actual branch merges to DA | am1 | Actual | Project: Swift Facelift 2024 | Branch: Actual recovery branch | Stage: Trial Actual Branch Stage | Stage: DA Actual | abp1 | a1 | local-1716100000000:am1 |
 
 ## Submit Sync Order
 
@@ -247,7 +260,7 @@ On Submit, save rows in this order:
 3. Upsert `Project Variant`.
 4. Upsert `Timeline Stage` records for plan/actual stages.
 5. Upsert `Timeline Branch`.
-6. Resolve branch parent planned stage lookups.
+6. Resolve branch parent Plan/Actual stage lookups.
 7. Upsert branch stages.
 8. Upsert `Branch Merge Link`.
 
@@ -257,6 +270,7 @@ For the simplest implementation, delete all child records for the project and re
 
 - Use lookup columns for relationships.
 - Use multiple lines of text for JSON fields.
+- Plan stage dates remain month-precision `YYYY-MM`; Actual and Branch Actual stage dates are full `YYYY-MM-DD` values and render on the grid as day plus month.
 - `pt_stageshiftsjson` stores visual preponed/postponed markers as `{ id, sourceNodeId, sourceContext, mode, targetDate, targetCol }`. These markers render as shifted stage copies with SVG quadratic Bezier arch arrows and do not replace normal stage records or normal timeline lines.
 - Deleting a Timeline Branch in the browser removes its Branch Plan stages, Branch Actual stages, merge links, and stage shifts whose source stage belonged to that branch.
 - Use alternate keys for browser external ids so Submit can upsert instead of duplicate.

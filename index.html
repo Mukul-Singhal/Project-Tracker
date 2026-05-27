@@ -133,7 +133,12 @@
   <div class="popup" id="nodePopup">
     <div class="popup-title">Add Stage</div>
     <input type="text" id="npTop" placeholder="Top label" />
-    <input type="text" id="npBottom" placeholder="Bottom label" />
+    <select id="npBottom" aria-label="Bottom label">
+      <option value="">Bottom label</option>
+      <option value="Beg">Beg</option>
+      <option value="Mid">Mid</option>
+      <option value="End">End</option>
+    </select>
     <input type="month" id="npDate" />
     <label class="popup-label" for="npShape">Stage Logo</label>
     <select id="npShape"></select>

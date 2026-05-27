@@ -19,6 +19,18 @@ function cloneState(v) {
   return JSON.parse(JSON.stringify(v));
 }
 
+const PLAN_BOTTOM_LABELS = ['Beg', 'Mid', 'End'];
+
+function fmtActualDate(d) {
+  if (!d) return '';
+  const match = String(d).trim().match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?$/);
+  if (!match) return '';
+  const month = Number(match[2]);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  if (!months[month - 1]) return '';
+  return match[3] ? `${Number(match[3])} ${months[month - 1]}` : `${months[month - 1]} ${match[1]}`;
+}
+
 function stableStringify(value) {
   function sortVal(val) {
     if (Array.isArray(val)) return val.map(sortVal);
@@ -70,9 +82,11 @@ const INITIAL_DATA = {
   planNodes: [],
   actualNodes: [],
   branches: [],
+  actualBranches: [],
   branchNodes: [],
   actualBranchNodes: [],
   mergeLinks: [],
+  actualMergeLinks: [],
   stageShifts: [],
   leftTable: { cols: ['Milestone', 'DOM Gas', 'DOM CNG'], rows: [['DA', '', ''], ['SOS', '', '']] },
   rightTable: { cols: ['Model Detail', 'Date- month/year'], rows: [['', '']] },
@@ -100,7 +114,7 @@ const store = createStore((set, get) => ({
   setEopItems: (items) => set({ eopItems: items || [] }),
   addYear: () => set(s => ({ years: [...s.years, s.years[s.years.length - 1] + 1] })),
   ensureYearVisible: (date) => {
-    const match = String(date || '').trim().match(/^(\d{4})-(\d{1,2})$/);
+    const match = String(date || '').trim().match(/^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/);
     if (!match) return;
     const target = Number(match[1]);
     set(s => {
@@ -124,21 +138,24 @@ const store = createStore((set, get) => ({
   })),
   deleteVariant: (id) => set(s => {
     const bids = new Set(s.branches.filter(b => b.variantId === id).map(b => b.id));
+    const abids = new Set((s.actualBranches || []).filter(b => b.variantId === id).map(b => b.id));
     const remainingPlanIds = new Set(s.planNodes.filter(n => n.variantId !== id).map(n => n.id));
     const removedNodeIds = new Set([
       ...s.planNodes.filter(n => n.variantId === id).map(n => n.id),
       ...s.actualNodes.filter(n => n.variantId === id).map(n => n.id),
       ...s.branchNodes.filter(n => bids.has(n.branchId)).map(n => n.id),
-      ...s.actualBranchNodes.filter(n => bids.has(n.branchId)).map(n => n.id),
+      ...s.actualBranchNodes.filter(n => abids.has(n.branchId)).map(n => n.id),
     ]);
     return {
       variants: s.variants.filter(v => v.id !== id),
       planNodes: s.planNodes.filter(n => n.variantId !== id),
       actualNodes: s.actualNodes.filter(n => n.variantId !== id),
       branches: s.branches.filter(b => b.variantId !== id),
+      actualBranches: (s.actualBranches || []).filter(b => b.variantId !== id),
       branchNodes: s.branchNodes.filter(n => !bids.has(n.branchId)),
-      actualBranchNodes: s.actualBranchNodes.filter(n => !bids.has(n.branchId)),
+      actualBranchNodes: s.actualBranchNodes.filter(n => !abids.has(n.branchId)),
       mergeLinks: s.mergeLinks.filter(l => !bids.has(l.fromBranchId) && (!l.toNodeId || remainingPlanIds.has(l.toNodeId))),
+      actualMergeLinks: (s.actualMergeLinks || []).filter(l => !abids.has(l.fromBranchId)),
       stageShifts: s.stageShifts.filter(shift => !removedNodeIds.has(shift.sourceNodeId)),
     };
   }),
@@ -150,6 +167,12 @@ const store = createStore((set, get) => ({
   })),
   removePlanNode: (id) => set(s => ({ planNodes: s.planNodes.filter(n => n.id !== id), ...removeStageShiftsForNodeData(s, id) })),
   movePlanNode: (id, col) => set(s => ({ planNodes: s.planNodes.map(n => n.id === id ? { ...n, col } : n) })),
+  updatePlanNode: (id, data) => set(s => {
+    const next = updateStageNodeData(s, 'plan', id, data);
+    if (next.ok === false) return {};
+    const { ok, reason, ...patch } = next;
+    return patch;
+  }),
 
   // ── Actual nodes ──
   addActualNode: (data) => set(s => ({
@@ -158,6 +181,12 @@ const store = createStore((set, get) => ({
   })),
   removeActualNode: (id) => set(s => ({ actualNodes: s.actualNodes.filter(n => n.id !== id), ...removeStageShiftsForNodeData(s, id) })),
   moveActualNode: (id, col) => set(s => ({ actualNodes: s.actualNodes.map(n => n.id === id ? { ...n, col } : n) })),
+  updateActualNode: (id, data) => set(s => {
+    const next = updateStageNodeData(s, 'actual', id, data);
+    if (next.ok === false) return {};
+    const { ok, reason, ...patch } = next;
+    return patch;
+  }),
 
   // ── Branch nodes ──
   addBranchNode: (data) => set(s => ({
@@ -167,14 +196,26 @@ const store = createStore((set, get) => ({
   })),
   removeBranchNode: (id) => set(s => removeBranchNodeData(s, id)),
   moveBranchNode: (id, col) => set(s => ({ branchNodes: s.branchNodes.map(n => n.id === id ? { ...n, col } : n) })),
+  updateBranchNode: (id, data) => set(s => {
+    const next = updateStageNodeData(s, 'branch', id, data);
+    if (next.ok === false) return {};
+    const { ok, reason, ...patch } = next;
+    return patch;
+  }),
 
   // ── Actual branch nodes ──
   addActualBranchNode: (data) => set(s => ({
     actualBranchNodes: [...s.actualBranchNodes, { id: 'i' + s.nid, isDRS: false, drsDetail: '', ...data }],
     nid: s.nid + 1,
   })),
-  removeActualBranchNode: (id) => set(s => ({ actualBranchNodes: s.actualBranchNodes.filter(n => n.id !== id), ...removeStageShiftsForNodeData(s, id) })),
+  removeActualBranchNode: (id) => set(s => removeActualBranchNodeData(s, id)),
   moveActualBranchNode: (id, col) => set(s => ({ actualBranchNodes: s.actualBranchNodes.map(n => n.id === id ? { ...n, col } : n) })),
+  updateActualBranchNode: (id, data) => set(s => {
+    const next = updateStageNodeData(s, 'actualBranch', id, data);
+    if (next.ok === false) return {};
+    const { ok, reason, ...patch } = next;
+    return patch;
+  }),
 
   // ── Branches ──
   addBranch: (data) => set(s => {
@@ -185,6 +226,16 @@ const store = createStore((set, get) => ({
     return { branches, nid: s.nid + 1 };
   }),
   removeBranch: (branchId) => set(s => removeBranchData(s, branchId)),
+
+  // ── Actual branches ──
+  addActualBranch: (data) => set(s => {
+    const branch = { id: 'i' + s.nid, ...data };
+    const insertAt = (s.actualBranches || []).reduce((idx, b, i) => b.variantId === data.variantId ? i + 1 : idx, (s.actualBranches || []).length);
+    const actualBranches = [...(s.actualBranches || [])];
+    actualBranches.splice(insertAt, 0, branch);
+    return { actualBranches, nid: s.nid + 1 };
+  }),
+  removeActualBranch: (branchId) => set(s => removeActualBranchData(s, branchId)),
 
   copyPlanToActual: () => set(s => copyPlanToActualData(s)),
 
@@ -201,6 +252,21 @@ const store = createStore((set, get) => ({
   })),
   removeMergeLinksForBranch: (branchId) => set(s => ({
     mergeLinks: s.mergeLinks.filter(l => l.fromBranchId !== branchId),
+  })),
+
+  // ── Actual merge links ──
+  addActualMergeLink: (data) => set(s => ({
+    actualMergeLinks: [
+      ...(s.actualMergeLinks || []).filter(l => l.fromNodeId !== data.fromNodeId),
+      { id: 'i' + s.nid, ...data },
+    ],
+    nid: s.nid + 1,
+  })),
+  removeActualMergeLinksForNode: (nodeId) => set(s => ({
+    actualMergeLinks: (s.actualMergeLinks || []).filter(l => l.fromNodeId !== nodeId && l.toNodeId !== nodeId),
+  })),
+  removeActualMergeLinksForBranch: (branchId) => set(s => ({
+    actualMergeLinks: (s.actualMergeLinks || []).filter(l => l.fromBranchId !== branchId),
   })),
 
   // ── Preponed / postponed stage markers ──
@@ -263,9 +329,13 @@ const store = createStore((set, get) => ({
     planNodes: nextState.planNodes || [],
     actualNodes: nextState.actualNodes || [],
     branches: nextState.branches || [],
+    actualBranches: nextState.actualBranches || ((nextState.actualBranchNodes || []).length
+      ? (nextState.branches || []).map(b => ({ ...b, sourcePlanBranchId: b.id }))
+      : []),
     branchNodes: nextState.branchNodes || [],
     actualBranchNodes: nextState.actualBranchNodes || [],
     mergeLinks: nextState.mergeLinks || [],
+    actualMergeLinks: nextState.actualMergeLinks || [],
     stageShifts: nextState.stageShifts || [],
     years: nextState.years ? cloneState(nextState.years) : cloneState(INITIAL_DATA.years),
     labelPositions: nextState.labelPositions || {},
@@ -290,6 +360,10 @@ function getBranchesForVariant(state, variantId) {
   return state.branches.filter(b => b.variantId === variantId);
 }
 
+function getActualBranchesForVariant(state, variantId) {
+  return (state.actualBranches || []).filter(b => b.variantId === variantId);
+}
+
 function getPlanLanes(state) {
   return state.variants.flatMap(v => [
     { type: 'plan', variantId: v.id, label: v.name },
@@ -302,7 +376,7 @@ function getPlanLanes(state) {
 function getActualLanes(state) {
   return state.variants.flatMap(v => [
     { type: 'actual', variantId: v.id, label: v.name },
-    ...getBranchesForVariant(state, v.id).map(b => ({
+    ...getActualBranchesForVariant(state, v.id).map(b => ({
       type: 'actualBranch', branchId: b.id, variantId: v.id, label: b.label,
     })),
   ]);
@@ -328,13 +402,88 @@ const getSidebarH = (state) => getGridGroupH(state);
 
 function dateToCol(date, state) {
   if (!date) return -1;
-  const match = String(date).trim().match(/^(\d{4})-(\d{1,2})$/);
+  const match = String(date).trim().match(/^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/);
   if (!match) return -1;
   const year = Number(match[1]);
   const month = Number(match[2]);
   const yearIndex = state.years.indexOf(year);
   if (yearIndex < 0 || month < 1 || month > 12) return -1;
   return yearIndex * 12 + month - 1;
+}
+
+function isPlanStageContext(rType) {
+  return rType === 'plan' || rType === 'branch';
+}
+
+function isActualStageContext(rType) {
+  return rType === 'actual' || rType === 'actualBranch';
+}
+
+function normalizePlanBottomLabel(value) {
+  const label = String(value || '').trim();
+  return PLAN_BOTTOM_LABELS.includes(label) ? label : '';
+}
+
+function isFullActualDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim());
+}
+
+function prepareStageNodeData(state, rType, currentCol, data, existing) {
+  const date = String(data.date || '').trim();
+  if (isActualStageContext(rType) && !isFullActualDate(date)) {
+    return { ok: false, reason: 'Enter the actual date.' };
+  }
+  if (date && isPlanStageContext(rType) && !/^\d{4}-\d{2}$/.test(date)) {
+    return { ok: false, reason: 'Select a valid month.' };
+  }
+
+  const col = date ? dateToCol(date, state) : currentCol;
+  if (!Number.isFinite(col) || col < 0) {
+    return { ok: false, reason: 'Selected date is outside the visible timeline.' };
+  }
+
+  return {
+    ok: true,
+    reason: '',
+    node: {
+      col,
+      type: data.type || (existing && existing.type) || 'square',
+      topLabel: String(data.topLabel || '').trim(),
+      bottomLabel: isPlanStageContext(rType) ? normalizePlanBottomLabel(data.bottomLabel) : '',
+      date,
+      isDRS: !!data.isDRS,
+      drsDetail: data.isDRS ? String(data.drsDetail || '').trim() : '',
+    },
+  };
+}
+
+function createStageNodeData(state, rType, clickedCol, data) {
+  return prepareStageNodeData(state, rType, clickedCol, data || {}, null);
+}
+
+function updateStageNodeData(state, rType, nodeId, data) {
+  const keys = {
+    plan: 'planNodes',
+    actual: 'actualNodes',
+    branch: 'branchNodes',
+    actualBranch: 'actualBranchNodes',
+  };
+  const key = keys[rType];
+  const nodes = (state[key] || []);
+  const existing = nodes.find(n => n.id === nodeId);
+  if (!key || !existing) return { ok: false, reason: 'Stage not found.' };
+
+  const prepared = prepareStageNodeData(state, rType, existing.col, { ...existing, ...(data || {}) }, existing);
+  if (!prepared.ok) return prepared;
+  const updated = { ...existing, ...prepared.node };
+  return {
+    ok: true,
+    reason: '',
+    planNodes: rType === 'plan' ? nodes.map(n => n.id === nodeId ? updated : n) : (state.planNodes || []),
+    actualNodes: rType === 'actual' ? nodes.map(n => n.id === nodeId ? updated : n) : (state.actualNodes || []),
+    branchNodes: rType === 'branch' ? nodes.map(n => n.id === nodeId ? updated : n) : (state.branchNodes || []),
+    actualBranchNodes: rType === 'actualBranch' ? nodes.map(n => n.id === nodeId ? updated : n) : (state.actualBranchNodes || []),
+  };
 }
 
 function colToDate(col, state) {
@@ -428,11 +577,28 @@ function getBranchSourcePoint(branch, state) {
   return { x: col * COL + COL / 2, y: getTopOffset(state) + laneIdx * ROH + ROH / 2 };
 }
 
+function getActualBranchSourcePoint(branch, state) {
+  const sourceNodeId = branch.sourceNodeId || branch.parentNodeId;
+  const sourceNode = sourceNodeId ? (state.actualNodes || []).find(n => n.id === sourceNodeId) : null;
+  if (sourceNode) return getActualNodeCenter(sourceNode, state);
+  const laneIdx = findActualLaneIndex(state, 'actual', branch.variantId);
+  const col = Number.isFinite(branch.sourceCol) ? branch.sourceCol : dateToCol(branch.sourceDate, state);
+  if (laneIdx < 0 || col < 0) return null;
+  return { x: col * COL + COL / 2, y: getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2 };
+}
+
 function getBranchLaneAnchorPoint(branch, state) {
   const laneIdx = findPlanLaneIndex(state, 'branch', branch.id);
   const col = Number.isFinite(branch.sourceCol) ? branch.sourceCol : dateToCol(branch.sourceDate, state);
   if (laneIdx < 0 || col < 0) return null;
   return { x: col * COL + COL / 2, y: getTopOffset(state) + laneIdx * ROH + ROH / 2 };
+}
+
+function getActualBranchLaneAnchorPoint(branch, state) {
+  const laneIdx = findActualLaneIndex(state, 'branch', branch.id);
+  const col = Number.isFinite(branch.sourceCol) ? branch.sourceCol : dateToCol(branch.sourceDate, state);
+  if (laneIdx < 0 || col < 0) return null;
+  return { x: col * COL + COL / 2, y: getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2 };
 }
 
 function getMergeTargetPoint(link, state) {
@@ -448,8 +614,27 @@ function getMergeTargetPoint(link, state) {
   return { x: col * COL + COL / 2, y: getTopOffset(state) + laneIdx * ROH + ROH / 2 };
 }
 
+function getActualMergeTargetPoint(link, state) {
+  if (link.toNodeId) {
+    const toNode = (state.actualNodes || []).find(n => n.id === link.toNodeId);
+    if (toNode) return getActualNodeCenter(toNode, state);
+  }
+  const branch = (state.actualBranches || []).find(b => b.id === link.fromBranchId);
+  if (!branch) return null;
+  const laneIdx = findActualLaneIndex(state, 'actual', branch.variantId);
+  const col = Number.isFinite(link.toCol) ? link.toCol : dateToCol(link.toDate, state);
+  if (laneIdx < 0 || col < 0) return null;
+  return { x: col * COL + COL / 2, y: getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2 };
+}
+
 function findPlanNodeAtCol(state, variantId, col) {
   return state.planNodes
+    .filter(n => n.variantId === variantId && n.col === col)
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)))[0] || null;
+}
+
+function findActualNodeAtCol(state, variantId, col) {
+  return (state.actualNodes || [])
     .filter(n => n.variantId === variantId && n.col === col)
     .sort((a, b) => String(a.id).localeCompare(String(b.id)))[0] || null;
 }
@@ -460,9 +645,20 @@ function getInitialPlanNodeForVariant(state, variantId) {
     .sort((a, b) => a.col - b.col || String(a.id).localeCompare(String(b.id)))[0] || null;
 }
 
-function canStartBranchAtCol(state, variantId, col) {
-  const initial = getInitialPlanNodeForVariant(state, variantId);
+function getInitialNodeForVariant(state, context, variantId) {
+  const nodes = context === 'actual' ? (state.actualNodes || []) : (state.planNodes || []);
+  return nodes
+    .filter(n => n.variantId === variantId)
+    .sort((a, b) => a.col - b.col || String(a.id).localeCompare(String(b.id)))[0] || null;
+}
+
+function canStartBranchAtColForContext(state, context, variantId, col) {
+  const initial = getInitialNodeForVariant(state, context, variantId);
   return !!initial && Number.isFinite(col) && col >= initial.col;
+}
+
+function canStartBranchAtCol(state, variantId, col) {
+  return canStartBranchAtColForContext(state, 'plan', variantId, col);
 }
 
 function getLastPlanNodeForVariant(state, variantId) {
@@ -488,10 +684,22 @@ function getLastBranchNode(branchId, state) {
     .slice(-1)[0] || null;
 }
 
-function isLastBranchNode(node, state) {
+function getLastBranchNodeForContext(branchId, state, context) {
+  const nodes = context === 'actualBranch' ? (state.actualBranchNodes || []) : (state.branchNodes || []);
+  return nodes
+    .filter(n => n.branchId === branchId)
+    .sort((a, b) => a.col - b.col || String(a.id).localeCompare(String(b.id)))
+    .slice(-1)[0] || null;
+}
+
+function isLastBranchNodeForContext(node, state, context) {
   if (!node || !node.branchId) return false;
-  const last = getLastBranchNode(node.branchId, state);
+  const last = getLastBranchNodeForContext(node.branchId, state, context);
   return !!last && last.id === node.id;
+}
+
+function isLastBranchNode(node, state) {
+  return isLastBranchNodeForContext(node, state, 'branch');
 }
 
 function getNextPlanNodeAfterBranchSource(branch, state) {
@@ -505,7 +713,11 @@ function getNextPlanNodeAfterBranchSource(branch, state) {
 }
 
 function canMergeBranchNodeToCol(node, col, state) {
-  if (!isLastBranchNode(node, state)) {
+  return canMergeBranchNodeToColForContext(node, col, state, 'branch');
+}
+
+function canMergeBranchNodeToColForContext(node, col, state, context) {
+  if (!isLastBranchNodeForContext(node, state, context)) {
     return { ok: false, reason: 'Only the last branch stage can merge.' };
   }
   if (!Number.isFinite(col)) {
@@ -515,15 +727,32 @@ function canMergeBranchNodeToCol(node, col, state) {
 }
 
 function removeBranchData(state, branchId) {
+  const removedActualBranchIds = new Set((state.actualBranches || [])
+    .filter(b => b.sourcePlanBranchId === branchId || b.id === branchId)
+    .map(b => b.id));
   const removedIds = new Set([
     ...(state.branchNodes || []).filter(n => n.branchId === branchId).map(n => n.id),
-    ...(state.actualBranchNodes || []).filter(n => n.branchId === branchId).map(n => n.id),
+    ...(state.actualBranchNodes || []).filter(n => n.branchId === branchId || removedActualBranchIds.has(n.branchId)).map(n => n.id),
   ]);
   return {
     branches: (state.branches || []).filter(b => b.id !== branchId),
     branchNodes: (state.branchNodes || []).filter(n => n.branchId !== branchId),
-    actualBranchNodes: (state.actualBranchNodes || []).filter(n => n.branchId !== branchId),
+    actualBranchNodes: (state.actualBranchNodes || []).filter(n => n.branchId !== branchId && !removedActualBranchIds.has(n.branchId)),
     mergeLinks: (state.mergeLinks || []).filter(l => l.fromBranchId !== branchId),
+    stageShifts: (state.stageShifts || []).filter(shift => !removedIds.has(shift.sourceNodeId)),
+    ...(state.actualBranches ? { actualBranches: state.actualBranches.filter(b => !removedActualBranchIds.has(b.id)) } : {}),
+    ...(state.actualMergeLinks ? { actualMergeLinks: state.actualMergeLinks.filter(l => !removedActualBranchIds.has(l.fromBranchId)) } : {}),
+  };
+}
+
+function removeActualBranchData(state, branchId) {
+  const removedIds = new Set(
+    (state.actualBranchNodes || []).filter(n => n.branchId === branchId).map(n => n.id)
+  );
+  return {
+    actualBranches: (state.actualBranches || []).filter(b => b.id !== branchId),
+    actualBranchNodes: (state.actualBranchNodes || []).filter(n => n.branchId !== branchId),
+    actualMergeLinks: (state.actualMergeLinks || []).filter(l => l.fromBranchId !== branchId),
     stageShifts: (state.stageShifts || []).filter(shift => !removedIds.has(shift.sourceNodeId)),
   };
 }
@@ -541,6 +770,24 @@ function removeBranchNodeData(state, nodeId) {
     branchNodes,
     actualBranchNodes: state.actualBranchNodes || [],
     mergeLinks: (state.mergeLinks || []).filter(l => l.fromNodeId !== nodeId),
+    ...(state.actualBranches ? { actualBranches: state.actualBranches } : {}),
+    ...(state.actualMergeLinks ? { actualMergeLinks: state.actualMergeLinks } : {}),
+    ...removeStageShiftsForNodeData(state, nodeId),
+  };
+}
+
+function removeActualBranchNodeData(state, nodeId) {
+  const node = (state.actualBranchNodes || []).find(n => n.id === nodeId);
+  if (!node) return { actualBranchNodes: state.actualBranchNodes || [] };
+  const actualBranchNodes = (state.actualBranchNodes || []).filter(n => n.id !== nodeId);
+  const branchStillHasNodes = actualBranchNodes.some(n => n.branchId === node.branchId);
+  if (!branchStillHasNodes) {
+    return removeActualBranchData(state, node.branchId);
+  }
+  return {
+    actualBranches: state.actualBranches || [],
+    actualBranchNodes,
+    actualMergeLinks: (state.actualMergeLinks || []).filter(l => l.fromNodeId !== nodeId),
     ...removeStageShiftsForNodeData(state, nodeId),
   };
 }
@@ -568,6 +815,7 @@ function addStageShiftData(state, data) {
     mode: data.mode,
     targetDate: data.targetDate,
     targetCol: data.targetCol,
+    drsDetail: String(data.drsDetail || '').trim(),
   };
   return {
     stageShifts: [...(state.stageShifts || []), shift],
@@ -612,8 +860,47 @@ function syncCopiedNodes(planNodes, actualNodes, contextKey, nextId) {
 function copyPlanToActualData(state) {
   const nextId = { value: state.nid || 1 };
   const actualNodes = syncCopiedNodes(state.planNodes || [], state.actualNodes || [], 'variantId', nextId);
-  const actualBranchNodes = syncCopiedNodes(state.branchNodes || [], state.actualBranchNodes || [], 'branchId', nextId);
-  return { actualNodes, actualBranchNodes, nid: nextId.value };
+  const planBranchIds = new Set((state.branches || []).map(b => b.id));
+  const bySourceBranch = new Map((state.actualBranches || [])
+    .filter(b => b.sourcePlanBranchId && planBranchIds.has(b.sourcePlanBranchId))
+    .map(b => [b.sourcePlanBranchId, b]));
+  const preservedActualBranches = (state.actualBranches || []).filter(b => !b.sourcePlanBranchId);
+  const branchIdMap = new Map();
+  const copiedActualBranches = (state.branches || []).map(branch => {
+    const existing = bySourceBranch.get(branch.id);
+    const id = existing ? existing.id : `i${nextId.value++}`;
+    branchIdMap.set(branch.id, id);
+    return {
+      id,
+      sourcePlanBranchId: branch.id,
+      variantId: branch.variantId,
+      parentNodeId: branch.parentNodeId || '',
+      sourceNodeId: branch.sourceNodeId || branch.parentNodeId || '',
+      sourceCol: branch.sourceCol,
+      sourceDate: branch.sourceDate || '',
+      label: branch.label || '',
+    };
+  });
+
+  const manualActualBranchIds = new Set(preservedActualBranches.map(b => b.id));
+  const preservedActualBranchNodes = (state.actualBranchNodes || []).filter(n => manualActualBranchIds.has(n.branchId));
+  const bySourceNode = new Map((state.actualBranchNodes || [])
+    .filter(n => n.sourcePlanNodeId)
+    .map(n => [n.sourcePlanNodeId, n]));
+  const copiedActualBranchNodes = (state.branchNodes || []).map(planNode => {
+    const existing = bySourceNode.get(planNode.id);
+    const id = existing ? existing.id : `i${nextId.value++}`;
+    return copyStageForActual({ ...planNode, branchId: branchIdMap.get(planNode.branchId) }, id, 'branchId');
+  });
+  const preservedActualMergeLinks = (state.actualMergeLinks || []).filter(l => manualActualBranchIds.has(l.fromBranchId));
+
+  return {
+    actualNodes,
+    actualBranches: [...preservedActualBranches, ...copiedActualBranches],
+    actualBranchNodes: [...preservedActualBranchNodes, ...copiedActualBranchNodes],
+    actualMergeLinks: preservedActualMergeLinks,
+    nid: nextId.value,
+  };
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -848,30 +1135,58 @@ function createDataversePayload(state) {
   return {
     project,
     variants: (s.variants || []).map((v, i) => ({ external_id: v.id, name: v.name || '', display_order: i })),
-    branches: (s.branches || []).map((b, i) => ({
+    branches: [
+      ...(s.branches || []).map((b, i) => ({
       external_id: b.id,
+      branch_context: 'plan',
       variant_external_id: b.variantId,
       parent_stage_external_id: b.parentNodeId || b.sourceNodeId || '',
       source_stage_external_id: b.sourceNodeId || b.parentNodeId || '',
       source_month: b.sourceDate || '',
       source_column_index: Number.isFinite(b.sourceCol) ? b.sourceCol : null,
+      source_plan_branch_external_id: '',
       label: b.label || '',
       display_order: i,
-    })),
+      })),
+      ...(s.actualBranches || []).map((b, i) => ({
+      external_id: b.id,
+      branch_context: 'actual',
+      variant_external_id: b.variantId,
+      parent_stage_external_id: b.parentNodeId || b.sourceNodeId || '',
+      source_stage_external_id: b.sourceNodeId || b.parentNodeId || '',
+      source_month: b.sourceDate || '',
+      source_column_index: Number.isFinite(b.sourceCol) ? b.sourceCol : null,
+      source_plan_branch_external_id: b.sourcePlanBranchId || '',
+      label: b.label || '',
+      display_order: i,
+      })),
+    ],
     stages: [
       ...mapStages(s.planNodes, 'plan', n => ({ variant_external_id: n.variantId })),
       ...mapStages(s.actualNodes, 'actual', n => ({ variant_external_id: n.variantId })),
       ...mapStages(s.branchNodes, 'branch_plan', n => ({ branch_external_id: n.branchId })),
       ...mapStages(s.actualBranchNodes, 'branch_actual', n => ({ branch_external_id: n.branchId })),
     ],
-    mergeLinks: (s.mergeLinks || []).map(l => ({
+    mergeLinks: [
+      ...(s.mergeLinks || []).map(l => ({
       external_id: l.id,
+      merge_context: 'plan',
       branch_external_id: l.fromBranchId,
       source_stage_external_id: l.fromNodeId,
       target_stage_external_id: l.toNodeId || '',
       target_month: l.toDate || '',
       target_column_index: Number.isFinite(l.toCol) ? l.toCol : null,
-    })),
+      })),
+      ...(s.actualMergeLinks || []).map(l => ({
+      external_id: l.id,
+      merge_context: 'actual',
+      branch_external_id: l.fromBranchId,
+      source_stage_external_id: l.fromNodeId,
+      target_stage_external_id: l.toNodeId || '',
+      target_month: l.toDate || '',
+      target_column_index: Number.isFinite(l.toCol) ? l.toCol : null,
+      })),
+    ],
   };
 }
 
@@ -1080,7 +1395,7 @@ function makeSubRow(tc, vId, rType, state) {
     c.dataset.vId = vId;
     c.dataset.rType = rType;
     c.addEventListener('click', onCellClick);
-    if (rType === 'plan') c.addEventListener('contextmenu', showCellCtx);
+    if (rType === 'plan' || rType === 'actual') c.addEventListener('contextmenu', showCellCtx);
     sr.appendChild(c);
   }
   return sr;
@@ -1105,7 +1420,7 @@ function makeBranchSubRow(tc, branchId, rType, label, state) {
   const pillText = document.createElement('span');
   pillText.textContent = '↳ ' + (label || 'Branch');
   pill.appendChild(pillText);
-  if (rType === 'branch') {
+  if (rType === 'branch' || rType === 'actualBranch') {
     const del = document.createElement('button');
     del.className = 'branch-pill-del';
     del.type = 'button';
@@ -1113,7 +1428,11 @@ function makeBranchSubRow(tc, branchId, rType, label, state) {
     del.textContent = '×';
     del.addEventListener('click', e => {
       e.stopPropagation();
-      store.getState().removeBranch(branchId);
+      if (rType === 'actualBranch') {
+        store.getState().removeActualBranch(branchId);
+      } else {
+        store.getState().removeBranch(branchId);
+      }
       if (mergePick && mergePick.fromBranchId === branchId) clearMergePick();
       renderAll();
       persistDraftNow();
@@ -1164,9 +1483,20 @@ function drawLines(grp, state) {
     const y = getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2;
     for (let i = 0; i < an.length - 1; i++)
       mkLine(grp, an[i].col * COL + COL / 2, y, an[i + 1].col * COL + COL / 2, y, '#f97316');
+    const lastActual = an[an.length - 1];
+    if (lastActual) {
+      const branchIds = new Set((state.actualBranches || []).filter(b => b.variantId === vr.id).map(b => b.id));
+      const maxMergeCol = Math.max(-1, ...(state.actualMergeLinks || [])
+        .filter(link => branchIds.has(link.fromBranchId))
+        .map(link => getMergeTargetCol(link, state))
+        .filter(col => Number.isFinite(col)));
+      if (maxMergeCol > lastActual.col) {
+        mkLine(grp, lastActual.col * COL + COL / 2, y, maxMergeCol * COL + COL / 2, y, '#f97316');
+      }
+    }
   });
 
-  state.branches.forEach(br => {
+  (state.actualBranches || []).forEach(br => {
     const laneIdx = findActualLaneIndex(state, 'branch', br.id);
     if (laneIdx < 0) return;
     const y = getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2;
@@ -1198,6 +1528,15 @@ function drawRelationshipArrows(grp, state) {
     hasArrows = true;
   });
 
+  (state.actualBranches || []).forEach(br => {
+    const firstChild = getFirstActualBranchNode(br.id, state);
+    const from = getActualBranchSourcePoint(br, state);
+    const to = firstChild ? getActualBranchNodeCenter(firstChild, state) : getActualBranchLaneAnchorPoint(br, state);
+    if (!from || !to) return;
+    addArrowPath(svg, from, to, 'actual-branch-start-arrow', 'actualBranchStartArrow');
+    hasArrows = true;
+  });
+
   state.mergeLinks.forEach(link => {
     const fromNode = state.branchNodes.find(n => n.id === link.fromNodeId && n.branchId === link.fromBranchId);
     if (!fromNode) return;
@@ -1205,6 +1544,16 @@ function drawRelationshipArrows(grp, state) {
     const to = getMergeTargetPoint(link, state);
     if (!from || !to) return;
     addMergeBackPath(svg, from, to);
+    hasArrows = true;
+  });
+
+  (state.actualMergeLinks || []).forEach(link => {
+    const fromNode = (state.actualBranchNodes || []).find(n => n.id === link.fromNodeId && n.branchId === link.fromBranchId);
+    if (!fromNode) return;
+    const from = getActualBranchNodeCenter(fromNode, state);
+    const to = getActualMergeTargetPoint(link, state);
+    if (!from || !to) return;
+    addActualMergeBackPath(svg, from, to);
     hasArrows = true;
   });
 
@@ -1235,6 +1584,9 @@ function makeRelationshipSvg(state) {
       <marker id="branchStartArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
         <path d="M0,0 L8,4 L0,8 Z" fill="#00c9b1"></path>
       </marker>
+      <marker id="actualBranchStartArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L8,4 L0,8 Z" fill="#f97316"></path>
+      </marker>
       <marker id="mergeLinkArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
         <path d="M0,0 L8,4 L0,8 Z" fill="#00c9b1"></path>
       </marker>
@@ -1260,6 +1612,13 @@ function addArrowPath(svg, from, to, cls, markerId) {
 function addMergeBackPath(svg, from, to) {
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   path.setAttribute('class', 'merge-link-arrow');
+  path.setAttribute('d', `M ${from.x} ${from.y} L ${to.x} ${from.y} L ${to.x} ${to.y}`);
+  svg.appendChild(path);
+}
+
+function addActualMergeBackPath(svg, from, to) {
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('class', 'actual-merge-link-arrow');
   path.setAttribute('d', `M ${from.x} ${from.y} L ${to.x} ${from.y} L ${to.x} ${to.y}`);
   svg.appendChild(path);
 }
@@ -1290,6 +1649,12 @@ function addStageShiftArrow(svg, from, to, mode) {
 
 function getFirstBranchNode(branchId, state) {
   return state.branchNodes
+    .filter(n => n.branchId === branchId)
+    .sort((a, b) => a.col - b.col || String(a.id).localeCompare(String(b.id)))[0] || null;
+}
+
+function getFirstActualBranchNode(branchId, state) {
+  return (state.actualBranchNodes || [])
     .filter(n => n.branchId === branchId)
     .sort((a, b) => a.col - b.col || String(a.id).localeCompare(String(b.id)))[0] || null;
 }
@@ -1419,7 +1784,7 @@ function mkNode(n, rType, hasShift) {
   if (n.variantId) el.dataset.variantId = n.variantId;
   if (n.branchId) el.dataset.branchId = n.branchId;
 
-  const dh = n.date ? `<span class="node-date">${fmtDate(n.date)}</span>` : '';
+  const dh = isActualStageContext(rType) && n.date ? `<span class="node-date">${fmtActualDate(n.date)}</span>` : '';
   const shape = n.type === 'circle' ? 'circle' : 'square';
   el.innerHTML = `
     <span class="node-label-top">${escapeHtml(n.topLabel || '')}</span>
@@ -1432,8 +1797,8 @@ function mkNode(n, rType, hasShift) {
     const a = store.getState();
     if (rType === 'plan') { a.removePlanNode(n.id); a.removeMergeLinksForNode(n.id); }
     else if (rType === 'branch') { a.removeBranchNode(n.id); a.removeMergeLinksForNode(n.id); }
-    else if (rType === 'actualBranch') a.removeActualBranchNode(n.id);
-    else { a.removeActualNode(n.id); a.removeMergeLinksForNode(n.id); }
+    else if (rType === 'actualBranch') { a.removeActualBranchNode(n.id); a.removeActualMergeLinksForNode(n.id); }
+    else { a.removeActualNode(n.id); a.removeActualMergeLinksForNode(n.id); }
     if (mergePick && mergePick.fromNodeId === n.id) clearMergePick();
     const s = store.getState();
     renderGrid(s); renderNodes(s); persistDraftNow();
@@ -1454,7 +1819,26 @@ function renderStageShiftNodes(grp, state) {
     const el = mkShiftedNode(source, shift);
     el.style.cssText = `left:${target.x - 14}px;top:${target.y - 14}px`;
     grp.appendChild(el);
+    addShiftDrsDetailLabel(grp, shift, target.x, target.y, state);
   });
+}
+
+function addShiftDrsDetailLabel(grp, shift, x, y, state) {
+  const text = String(shift.drsDetail || '').trim();
+  if (!text) return;
+  const el = document.createElement('div');
+  el.className = 'drs-detail-label shift-drs-detail-label';
+  el.dataset.labelKey = `shift-drs:${shift.id}`;
+  el.title = text;
+  el.textContent = text;
+  const labelWidth = 150;
+  const gridW = totalCols(state) * COL;
+  const rightFits = x + 28 + labelWidth < gridW;
+  const defaultPos = { x: rightFits ? x + 28 : Math.max(4, x - labelWidth - 28), y: Math.max(4, y - 38) };
+  const pos = state.labelPositions[`shift-drs:${shift.id}`] || defaultPos;
+  el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
+  el.addEventListener('mousedown', startDrsLabelDrag);
+  grp.appendChild(el);
 }
 
 function mkShiftedNode(source, shift) {
@@ -1726,6 +2110,7 @@ async function exportPDF() {
 // Transient UI state (not persisted, not in store)
 let pendCell = null;
 let dragNode = null, dox = 0, doy = 0;
+let dragStartX = 0, dragStartY = 0, nodeDragMoved = false;
 let ctxId = null, ctxRowType = null;
 let ctxCell = null;
 let modalCb = null;
@@ -1790,6 +2175,7 @@ function onCellClick(e) {
   const r = cell.getBoundingClientRect();
   nodePopup.style.cssText = `left:${r.left}px;top:${r.bottom + 4}px`;
   nodePopup.classList.add('active');
+  configureNodePopupForContext(rType);
   $('npTop').value = '';
   $('npBottom').value = '';
   $('npDate').value = '';
@@ -1800,6 +2186,14 @@ function onCellClick(e) {
   $('npTop').focus();
 }
 
+function configureNodePopupForContext(rType) {
+  const bottom = $('npBottom');
+  bottom.style.display = isPlanStageContext(rType) ? '' : 'none';
+  bottom.disabled = !isPlanStageContext(rType);
+  $('npDate').type = isActualStageContext(rType) ? 'date' : 'month';
+  $('npDate').required = isActualStageContext(rType);
+}
+
 // ── Node popup ──
 $('npIsDRS').addEventListener('change', () => {
   $('npDrsDetail').style.display = $('npIsDRS').checked ? 'block' : 'none';
@@ -1808,16 +2202,22 @@ $('npIsDRS').addEventListener('change', () => {
 $('npConfirm').addEventListener('click', () => {
   if (!pendCell) return;
   const { col, vId, rType, branchId } = pendCell;
-  const base = {
-    col,
+  const a = store.getState();
+  const date = $('npDate').value;
+  if (date) a.ensureYearVisible(date);
+  const prepared = createStageNodeData(store.getState(), rType, col, {
     type: $('npShape').value,
     topLabel: $('npTop').value.trim(),
-    bottomLabel: $('npBottom').value.trim(),
-    date: $('npDate').value,
+    bottomLabel: $('npBottom').value,
+    date,
     isDRS: $('npIsDRS').checked,
     drsDetail: $('npIsDRS').checked ? $('npDrsDetail').value.trim() : '',
-  };
-  const a = store.getState();
+  });
+  if (!prepared.ok) {
+    alert(prepared.reason);
+    return;
+  }
+  const base = prepared.node;
   if (rType === 'plan') a.addPlanNode({ ...base, variantId: vId });
   else if (rType === 'branch') a.addBranchNode({ ...base, branchId });
   else if (rType === 'actualBranch') a.addActualBranchNode({ ...base, branchId });
@@ -1839,12 +2239,20 @@ function showCtx(e, nodeId, rType) {
   ctxId = nodeId; ctxRowType = rType; ctxCell = null;
   const state = store.getState();
   const planNode = rType === 'plan' ? state.planNodes.find(n => n.id === nodeId) : null;
+  const actualNode = rType === 'actual' ? state.actualNodes.find(n => n.id === nodeId) : null;
   const branchNode = rType === 'branch' ? state.branchNodes.find(n => n.id === nodeId) : null;
+  const actualBranchNode = rType === 'actualBranch' ? state.actualBranchNodes.find(n => n.id === nodeId) : null;
+  const mainNode = planNode || actualNode;
+  const branchContext = rType === 'actual' ? 'actual' : 'plan';
   ctxMenu.style.cssText = `left:${e.clientX}px;top:${e.clientY}px`;
   ctxMenu.classList.add('active');
   $('ctxBranch').textContent = '🌿 New Branch from here';
-  $('ctxBranch').style.display = planNode && canStartBranchAtCol(state, planNode.variantId, planNode.col) ? 'block' : 'none';
-  $('ctxMerge').style.display = rType === 'branch' && isLastBranchNode(branchNode, state) ? 'block' : 'none';
+  $('ctxBranch').style.display = mainNode && canStartBranchAtColForContext(state, branchContext, mainNode.variantId, mainNode.col) ? 'block' : 'none';
+  $('ctxMerge').style.display =
+    (rType === 'branch' && isLastBranchNodeForContext(branchNode, state, 'branch')) ||
+    (rType === 'actualBranch' && isLastBranchNodeForContext(actualBranchNode, state, 'actualBranch'))
+      ? 'block'
+      : 'none';
   $('ctxMerge').textContent = 'Merge to month';
   $('ctxPreponed').style.display = 'block';
   $('ctxPostponed').style.display = 'block';
@@ -1856,13 +2264,14 @@ function showCellCtx(e) {
   const cell = e.currentTarget;
   const col = +cell.dataset.col;
   const vId = cell.dataset.vId;
-  if (!canStartBranchAtCol(store.getState(), vId, col)) {
+  const rType = cell.dataset.rType;
+  if (!canStartBranchAtColForContext(store.getState(), rType, vId, col)) {
     ctxMenu.classList.remove('active');
     return;
   }
   ctxId = null;
-  ctxRowType = 'planCell';
-  ctxCell = { col, vId };
+  ctxRowType = rType === 'actual' ? 'actualCell' : 'planCell';
+  ctxCell = { col, vId, rType };
   ctxMenu.style.cssText = `left:${e.clientX}px;top:${e.clientY}px`;
   ctxMenu.classList.add('active');
   $('ctxBranch').textContent = '🌿 New Branch from this month';
@@ -1876,22 +2285,27 @@ function showCellCtx(e) {
 $('ctxBranch').addEventListener('click', () => {
   ctxMenu.classList.remove('active');
   const state = store.getState();
-  const parent = ctxId ? state.planNodes.find(n => n.id === ctxId) : null;
+  const isActual = ctxRowType === 'actual' || ctxRowType === 'actualCell';
+  const parent = ctxId
+    ? (isActual ? state.actualNodes.find(n => n.id === ctxId) : state.planNodes.find(n => n.id === ctxId))
+    : null;
   const sourceCol = parent ? parent.col : ctxCell && ctxCell.col;
   const variantId = parent ? parent.variantId : ctxCell && ctxCell.vId;
   if (!variantId || !Number.isFinite(sourceCol)) return;
-  if (!canStartBranchAtCol(state, variantId, sourceCol)) return;
+  if (!canStartBranchAtColForContext(state, isActual ? 'actual' : 'plan', variantId, sourceCol)) return;
   const sourceDate = (parent && parent.date) || colToDate(sourceCol, state);
   openModal('New Branch', `<div class="form-group"><label>Branch Label</label><input id="f_bl" type="text" placeholder="e.g. Gas variant"/></div>`, () => {
     const label = $('f_bl').value.trim() || 'Branch';
-    store.getState().addBranch({
+    const data = {
       variantId,
       parentNodeId: parent ? parent.id : '',
       sourceNodeId: parent ? parent.id : '',
       sourceCol,
       sourceDate,
       label,
-    });
+    };
+    if (isActual) store.getState().addActualBranch(data);
+    else store.getState().addBranch(data);
     ctxCell = null;
     renderAll(); persistDraftNow();
   });
@@ -1900,7 +2314,10 @@ $('ctxBranch').addEventListener('click', () => {
 $('ctxMerge').addEventListener('click', e => {
   e.stopPropagation();
   ctxMenu.classList.remove('active');
-  const fromNode = store.getState().branchNodes.find(n => n.id === ctxId);
+  const isActual = ctxRowType === 'actualBranch';
+  const fromNode = isActual
+    ? store.getState().actualBranchNodes.find(n => n.id === ctxId)
+    : store.getState().branchNodes.find(n => n.id === ctxId);
   if (!fromNode) return;
   openModal('Merge Branch', `<div class="form-group"><label>Merge Month</label><input id="f_merge_month" type="month"/></div>`, () => {
     const date = $('f_merge_month').value;
@@ -1910,22 +2327,28 @@ $('ctxMerge').addEventListener('click', e => {
     }
     store.getState().ensureYearVisible(date);
     const state = store.getState();
-    const branch = state.branches.find(b => b.id === fromNode.branchId);
+    const branch = isActual
+      ? (state.actualBranches || []).find(b => b.id === fromNode.branchId)
+      : state.branches.find(b => b.id === fromNode.branchId);
     if (!branch) return;
     const col = dateToCol(date, state);
-    const validation = canMergeBranchNodeToCol(fromNode, col, state);
+    const validation = canMergeBranchNodeToColForContext(fromNode, col, state, isActual ? 'actualBranch' : 'branch');
     if (!validation.ok) {
       alert(validation.reason);
       return false;
     }
-    const targetNode = findPlanNodeAtCol(state, branch.variantId, col);
-    store.getState().addMergeLink({
+    const targetNode = isActual
+      ? findActualNodeAtCol(state, branch.variantId, col)
+      : findPlanNodeAtCol(state, branch.variantId, col);
+    const data = {
       fromNodeId: fromNode.id,
       fromBranchId: fromNode.branchId,
       toNodeId: targetNode ? targetNode.id : '',
       toCol: col,
       toDate: date,
-    });
+    };
+    if (isActual) store.getState().addActualMergeLink(data);
+    else store.getState().addMergeLink(data);
     renderAll(); persistDraftNow();
     return true;
   });
@@ -1941,10 +2364,17 @@ function openStageShiftModal(mode) {
   if (!source) return;
   const title = mode === 'preponed' ? 'Preponed Stage' : 'Postponed Stage';
   const label = mode === 'preponed' ? 'Preponed Month' : 'Postponed Month';
-  openModal(title, `<div class="form-group"><label>${label}</label><input id="f_shift_month" type="month"/></div>`, () => {
+  openModal(title, `
+    <div class="form-group"><label>${label}</label><input id="f_shift_month" type="month"/></div>
+    <div class="form-group"><label>DRS Details</label><textarea id="f_shift_drs_detail" rows="3" placeholder="Enter DRS Details"></textarea></div>`, () => {
     const date = $('f_shift_month').value;
+    const drsDetail = $('f_shift_drs_detail').value.trim();
     if (!date) {
       alert(`Select a ${mode === 'preponed' ? 'preponed' : 'postponed'} month.`);
+      return false;
+    }
+    if (!drsDetail) {
+      alert('Enter DRS Details for the shifted stage.');
       return false;
     }
     store.getState().ensureYearVisible(date);
@@ -1961,7 +2391,49 @@ function openStageShiftModal(mode) {
       mode,
       targetDate: date,
       targetCol,
+      drsDetail,
     });
+    renderAll(); persistDraftNow();
+    return true;
+  });
+}
+
+function planBottomOptions(selected) {
+  const value = normalizePlanBottomLabel(selected);
+  return [
+    `<option value=""${value ? '' : ' selected'}>Bottom label</option>`,
+    ...PLAN_BOTTOM_LABELS.map(label => `<option value="${label}"${value === label ? ' selected' : ''}>${label}</option>`),
+  ].join('');
+}
+
+function openStageEditModal(node, rType) {
+  if (!node) return;
+  nodePopup.classList.remove('active');
+  const isActual = isActualStageContext(rType);
+  const bottomField = isPlanStageContext(rType)
+    ? `<div class="form-group"><label>Bottom Label</label><select id="f_stage_bottom">${planBottomOptions(node.bottomLabel)}</select></div>`
+    : '';
+  openModal('Edit Stage', `
+    <div class="form-group"><label>Top Label</label><input id="f_stage_top" type="text" value="${escapeHtml(node.topLabel || '')}"/></div>
+    ${bottomField}
+    <div class="form-group"><label>${isActual ? 'Actual Date' : 'Plan Month'}</label><input id="f_stage_date" type="${isActual ? 'date' : 'month'}" value="${escapeHtml(node.date || '')}"/></div>`, () => {
+    const date = $('f_stage_date').value;
+    if (date) store.getState().ensureYearVisible(date);
+    const data = {
+      topLabel: $('f_stage_top').value.trim(),
+      bottomLabel: isPlanStageContext(rType) ? $('f_stage_bottom').value : '',
+      date,
+    };
+    const validation = updateStageNodeData(store.getState(), rType, node.id, data);
+    if (validation.ok === false) {
+      alert(validation.reason);
+      return false;
+    }
+    const a = store.getState();
+    if (rType === 'plan') a.updatePlanNode(node.id, data);
+    else if (rType === 'branch') a.updateBranchNode(node.id, data);
+    else if (rType === 'actualBranch') a.updateActualBranchNode(node.id, data);
+    else a.updateActualNode(node.id, data);
     renderAll(); persistDraftNow();
     return true;
   });
@@ -1973,8 +2445,8 @@ $('ctxDelete').addEventListener('click', () => {
   const a = store.getState();
   if (ctxRowType === 'plan') { a.removePlanNode(ctxId); a.removeMergeLinksForNode(ctxId); }
   else if (ctxRowType === 'branch') { a.removeBranchNode(ctxId); a.removeMergeLinksForNode(ctxId); }
-  else if (ctxRowType === 'actualBranch') a.removeActualBranchNode(ctxId);
-  else { a.removeActualNode(ctxId); a.removeMergeLinksForNode(ctxId); }
+  else if (ctxRowType === 'actualBranch') { a.removeActualBranchNode(ctxId); a.removeActualMergeLinksForNode(ctxId); }
+  else { a.removeActualNode(ctxId); a.removeActualMergeLinksForNode(ctxId); }
   if (mergePick && mergePick.fromNodeId === ctxId) clearMergePick();
   ctxId = null;
   const s = store.getState();
@@ -2059,18 +2531,25 @@ $('copyActualBtn').addEventListener('click', () => {
 // ── Drag nodes ──
 function startNodeDrag(e) {
   if (e.target.classList.contains('node-del')) return;
+  if (e.button !== 0) return;
   if (mergePick) return;
   e.preventDefault();
   dragNode = e.currentTarget;
   const r = dragNode.getBoundingClientRect();
   dox = e.clientX - r.left; doy = e.clientY - r.top;
-  dragNode.style.opacity = '.6'; dragNode.style.zIndex = '50';
+  dragStartX = e.clientX; dragStartY = e.clientY; nodeDragMoved = false;
   document.addEventListener('mousemove', onNodeMove);
   document.addEventListener('mouseup', onNodeUp);
 }
 
 function onNodeMove(e) {
   if (!dragNode) return;
+  if (!nodeDragMoved && Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY) < 4) return;
+  if (!nodeDragMoved) {
+    nodeDragMoved = true;
+    dragNode.style.opacity = '.6';
+    dragNode.style.zIndex = '50';
+  }
   const grp = dragNode.closest('.grid-vr-grp');
   const gr = grp.getBoundingClientRect();
   dragNode.style.left = Math.max(0, e.clientX - gr.left - dox) + 'px';
@@ -2084,17 +2563,24 @@ function onNodeUp(e) {
   const nid = dragNode.dataset.nodeId;
   const rType = dragNode.dataset.rType;
   const state = store.getState();
+  const node = findStageByContext(state, rType, nid);
+  const moved = nodeDragMoved;
   const newCol = Math.max(0, Math.min(Math.floor((e.clientX - gr.left - dox + 14) / COL), totalCols(state) - 1));
+
+  dragNode.style.opacity = '1'; dragNode.style.zIndex = '5';
+  dragNode = null;
+  nodeDragMoved = false;
+  document.removeEventListener('mousemove', onNodeMove);
+  document.removeEventListener('mouseup', onNodeUp);
+  if (!moved) {
+    openStageEditModal(node, rType);
+    return;
+  }
   const a = store.getState();
   if (rType === 'plan') a.movePlanNode(nid, newCol);
   else if (rType === 'branch') a.moveBranchNode(nid, newCol);
   else if (rType === 'actualBranch') a.moveActualBranchNode(nid, newCol);
   else a.moveActualNode(nid, newCol);
-
-  dragNode.style.opacity = '1'; dragNode.style.zIndex = '5';
-  dragNode = null;
-  document.removeEventListener('mousemove', onNodeMove);
-  document.removeEventListener('mouseup', onNodeUp);
   const s = store.getState();
   renderGrid(s); renderNodes(s); persistDraftNow();
 }

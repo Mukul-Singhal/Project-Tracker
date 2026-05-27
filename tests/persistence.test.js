@@ -23,16 +23,24 @@ module.exports = {
   parseEopItems,
   copyPlanToActualData,
   isLastBranchNode,
+  isLastBranchNodeForContext: typeof isLastBranchNodeForContext === 'function' ? isLastBranchNodeForContext : undefined,
   canMergeBranchNodeToCol,
+  canMergeBranchNodeToColForContext: typeof canMergeBranchNodeToColForContext === 'function' ? canMergeBranchNodeToColForContext : undefined,
   canStartBranchAtCol,
+  canStartBranchAtColForContext: typeof canStartBranchAtColForContext === 'function' ? canStartBranchAtColForContext : undefined,
   removeBranchNodeData,
   removeBranchData,
+  removeActualBranchData: typeof removeActualBranchData === 'function' ? removeActualBranchData : undefined,
   canAddStageShift,
   addStageShiftData,
   removeStageShiftsForNodeData,
   getMilestoneTableRows: typeof getMilestoneTableRows === 'function' ? getMilestoneTableRows : undefined,
   getDiscussionPeriodCols: typeof getDiscussionPeriodCols === 'function' ? getDiscussionPeriodCols : undefined,
   getDiscussionPeriodClass: typeof getDiscussionPeriodClass === 'function' ? getDiscussionPeriodClass : undefined,
+  dateToCol: typeof dateToCol === 'function' ? dateToCol : undefined,
+  createStageNodeData: typeof createStageNodeData === 'function' ? createStageNodeData : undefined,
+  updateStageNodeData: typeof updateStageNodeData === 'function' ? updateStageNodeData : undefined,
+  fmtActualDate: typeof fmtActualDate === 'function' ? fmtActualDate : undefined,
 };`;
 
   const sandbox = {
@@ -100,6 +108,94 @@ test('getDiscussionPeriodClass identifies highlighted discussion columns', () =>
   assert.equal(persistence.getDiscussionPeriodClass(10, state), '');
 });
 
+test('dateToCol accepts full dates by using the year and month portion', () => {
+  const state = { years: [2024, 2025] };
+
+  assert.equal(persistence.dateToCol('2024-07-19', state), 6);
+  assert.equal(persistence.dateToCol('2025-01-01', state), 12);
+  assert.equal(persistence.dateToCol('2024-07', state), 6);
+  assert.equal(persistence.dateToCol('2024-13-01', state), -1);
+});
+
+test('createStageNodeData moves plan stages to selected month and keeps clicked month when date is blank', () => {
+  const state = { years: [2024, 2025] };
+
+  assert.deepEqual(toPlain(persistence.createStageNodeData(state, 'plan', 2, {
+    type: 'square',
+    topLabel: ' DA ',
+    bottomLabel: 'Mid',
+    date: '2025-03',
+    isDRS: false,
+    drsDetail: '',
+  })), {
+    ok: true,
+    reason: '',
+    node: {
+      col: 14,
+      type: 'square',
+      topLabel: 'DA',
+      bottomLabel: 'Mid',
+      date: '2025-03',
+      isDRS: false,
+      drsDetail: '',
+    },
+  });
+
+  assert.equal(persistence.createStageNodeData(state, 'plan', 2, { bottomLabel: 'Custom', date: '' }).node.col, 2);
+  assert.equal(persistence.createStageNodeData(state, 'plan', 2, { bottomLabel: 'Custom', date: '' }).node.bottomLabel, '');
+});
+
+test('createStageNodeData requires actual full dates and stores actual stages in that month', () => {
+  const state = { years: [2024, 2025] };
+
+  assert.deepEqual(toPlain(persistence.createStageNodeData(state, 'actual', 2, {
+    type: 'circle',
+    topLabel: ' Built ',
+    bottomLabel: 'Mid',
+    date: '2025-04-27',
+    isDRS: true,
+    drsDetail: ' Actual DRS ',
+  })), {
+    ok: true,
+    reason: '',
+    node: {
+      col: 15,
+      type: 'circle',
+      topLabel: 'Built',
+      bottomLabel: '',
+      date: '2025-04-27',
+      isDRS: true,
+      drsDetail: 'Actual DRS',
+    },
+  });
+  assert.equal(persistence.createStageNodeData(state, 'actual', 2, { date: '' }).ok, false);
+  assert.equal(persistence.createStageNodeData(state, 'actualBranch', 2, { date: '2025-04' }).ok, false);
+});
+
+test('updateStageNodeData edits the correct stage collection and recalculates the date column', () => {
+  const state = {
+    years: [2024, 2025],
+    planNodes: [{ id: 'p1', variantId: 'v1', col: 1, type: 'square', topLabel: 'Old', bottomLabel: 'Beg', date: '' }],
+    actualNodes: [{ id: 'a1', variantId: 'v1', col: 1, type: 'square', topLabel: 'Old', bottomLabel: '', date: '2024-02-01' }],
+    branchNodes: [{ id: 'b1', branchId: 'br1', col: 1, type: 'square', topLabel: 'Old', bottomLabel: 'End', date: '' }],
+    actualBranchNodes: [{ id: 'ab1', branchId: 'abr1', col: 1, type: 'square', topLabel: 'Old', bottomLabel: '', date: '2024-02-01' }],
+  };
+
+  const planNext = persistence.updateStageNodeData(state, 'plan', 'p1', { topLabel: 'New', bottomLabel: 'End', date: '2025-06' });
+  assert.equal(planNext.planNodes[0].col, 17);
+  assert.equal(planNext.planNodes[0].bottomLabel, 'End');
+  assert.deepEqual(toPlain(planNext.actualNodes), state.actualNodes);
+
+  const actualNext = persistence.updateStageNodeData(state, 'actualBranch', 'ab1', { topLabel: 'Done', date: '2025-07-15' });
+  assert.equal(actualNext.actualBranchNodes[0].col, 18);
+  assert.equal(actualNext.actualBranchNodes[0].date, '2025-07-15');
+  assert.equal(actualNext.actualBranchNodes[0].bottomLabel, '');
+});
+
+test('fmtActualDate shows actual stage dates as day and month', () => {
+  assert.equal(persistence.fmtActualDate('2025-04-27'), '27 Apr');
+});
+
 test('createDataversePayload maps state into simple Dataverse entity groups', () => {
   const state = {
     projectId: 'local-1',
@@ -134,6 +230,7 @@ test('createDataversePayload maps state into simple Dataverse entity groups', ()
   assert.equal(payload.stages[1].stage_context, 'branch_plan');
   assert.deepEqual(toPlain(payload.mergeLinks), [{
     external_id: 'm1',
+    merge_context: 'plan',
     branch_external_id: 'b1',
     source_stage_external_id: 'bp1',
     target_stage_external_id: 'p1',
@@ -239,6 +336,7 @@ test('createDataversePayload serializes merge links with stage and month-anchor 
   assert.deepEqual(toPlain(payload.mergeLinks), [
     {
       external_id: 'm1',
+      merge_context: 'plan',
       branch_external_id: 'b1',
       source_stage_external_id: 'bp1',
       target_stage_external_id: 'p1',
@@ -247,6 +345,7 @@ test('createDataversePayload serializes merge links with stage and month-anchor 
     },
     {
       external_id: 'm2',
+      merge_context: 'plan',
       branch_external_id: 'b1',
       source_stage_external_id: 'bp1',
       target_stage_external_id: '',
@@ -279,7 +378,7 @@ test('copyPlanToActualData overwrites copied nodes and preserves manual actual n
 
   const next = persistence.copyPlanToActualData(state);
 
-  assert.equal(next.nid, 11);
+  assert.equal(next.nid, 12);
   assert.equal(next.actualNodes.length, 4);
   assert.deepEqual(toPlain(next.actualNodes.find(n => n.id === 'a-manual')), state.actualNodes[0]);
   assert.deepEqual(toPlain(next.actualNodes.find(n => n.id === 'a-stale-copy')), state.actualNodes[2]);
@@ -296,11 +395,22 @@ test('copyPlanToActualData overwrites copied nodes and preserves manual actual n
     drsDetail: 'Plan DRS',
   });
   assert.equal(next.actualNodes.find(n => n.sourcePlanNodeId === 'p2').id, 'i10');
+  assert.deepEqual(toPlain(next.actualBranches), [
+    {
+      id: 'i11',
+      sourcePlanBranchId: 'b1',
+      variantId: 'v1',
+      parentNodeId: 'p1',
+      sourceNodeId: 'p1',
+      sourceDate: '',
+      label: 'Gas branch',
+    },
+  ]);
   assert.deepEqual(toPlain(next.actualBranchNodes), [
     {
       id: 'ab-copy',
       sourcePlanNodeId: 'bp1',
-      branchId: 'b1',
+      branchId: 'i11',
       col: 7,
       type: 'square',
       topLabel: 'Trial',
@@ -310,6 +420,58 @@ test('copyPlanToActualData overwrites copied nodes and preserves manual actual n
       drsDetail: '',
     },
   ]);
+});
+
+test('copyPlanToActualData copies plan branches into actual branches and preserves manual actual branches', () => {
+  const state = {
+    nid: 30,
+    planNodes: [{ id: 'p1', variantId: 'v1', col: 4, type: 'square', topLabel: 'DA', bottomLabel: '', date: '2024-05' }],
+    actualNodes: [],
+    branches: [{ id: 'br1', variantId: 'v1', parentNodeId: 'p1', sourceNodeId: 'p1', sourceCol: 4, sourceDate: '2024-05', label: 'Plan branch' }],
+    branchNodes: [{ id: 'bn1', branchId: 'br1', col: 6, type: 'circle', topLabel: 'Trial', bottomLabel: '', date: '2024-07' }],
+    actualBranches: [
+      { id: 'abr-manual', variantId: 'v1', sourceCol: 7, sourceDate: '2024-08', label: 'Manual actual' },
+      { id: 'abr-old-copy', sourcePlanBranchId: 'missing', variantId: 'v1', sourceCol: 2, sourceDate: '2024-03', label: 'Old copy' },
+    ],
+    actualBranchNodes: [
+      { id: 'abn-manual', branchId: 'abr-manual', col: 8, type: 'square', topLabel: 'Manual', bottomLabel: '', date: '2024-09' },
+      { id: 'abn-old-copy', sourcePlanNodeId: 'missing-node', branchId: 'abr-old-copy', col: 3, type: 'square', topLabel: 'Old', bottomLabel: '', date: '2024-04' },
+    ],
+    actualMergeLinks: [{ id: 'aml-manual', fromNodeId: 'abn-manual', fromBranchId: 'abr-manual', toCol: 10 }],
+  };
+
+  const next = persistence.copyPlanToActualData(state);
+
+  assert.deepEqual(toPlain(next.actualBranches), [
+    { id: 'abr-manual', variantId: 'v1', sourceCol: 7, sourceDate: '2024-08', label: 'Manual actual' },
+    {
+      id: 'i31',
+      sourcePlanBranchId: 'br1',
+      variantId: 'v1',
+      parentNodeId: 'p1',
+      sourceNodeId: 'p1',
+      sourceCol: 4,
+      sourceDate: '2024-05',
+      label: 'Plan branch',
+    },
+  ]);
+  assert.deepEqual(toPlain(next.actualBranchNodes), [
+    { id: 'abn-manual', branchId: 'abr-manual', col: 8, type: 'square', topLabel: 'Manual', bottomLabel: '', date: '2024-09' },
+    {
+      id: 'i32',
+      sourcePlanNodeId: 'bn1',
+      branchId: 'i31',
+      col: 6,
+      type: 'circle',
+      topLabel: 'Trial',
+      bottomLabel: '',
+      date: '2024-07',
+      isDRS: false,
+      drsDetail: '',
+    },
+  ]);
+  assert.deepEqual(toPlain(next.actualMergeLinks), [{ id: 'aml-manual', fromNodeId: 'abn-manual', fromBranchId: 'abr-manual', toCol: 10 }]);
+  assert.equal(next.nid, 33);
 });
 
 test('isLastBranchNode only allows merge from the final branch stage', () => {
@@ -341,6 +503,21 @@ test('canStartBranchAtCol only allows branches from or after the variant initial
   assert.equal(persistence.canStartBranchAtCol(state, 'missing', 8), false);
 });
 
+test('canStartBranchAtColForContext supports actual branch starts from actual stages', () => {
+  const state = {
+    planNodes: [{ id: 'p1', variantId: 'v1', col: 4 }],
+    actualNodes: [
+      { id: 'a1', variantId: 'v1', col: 6 },
+      { id: 'a2', variantId: 'v1', col: 10 },
+    ],
+  };
+
+  assert.equal(persistence.canStartBranchAtColForContext(state, 'actual', 'v1', 5), false);
+  assert.equal(persistence.canStartBranchAtColForContext(state, 'actual', 'v1', 6), true);
+  assert.equal(persistence.canStartBranchAtColForContext(state, 'actual', 'v1', 9), true);
+  assert.equal(persistence.canStartBranchAtColForContext(state, 'plan', 'v1', 4), true);
+});
+
 test('canMergeBranchNodeToCol allows the last branch stage to merge to any month', () => {
   const state = {
     branches: [{ id: 'br1', variantId: 'v1', sourceCol: 4, sourceDate: '2024-05' }],
@@ -359,6 +536,21 @@ test('canMergeBranchNodeToCol allows the last branch stage to merge to any month
   assert.equal(persistence.canMergeBranchNodeToCol(state.branchNodes[1], 12, state).ok, true);
   assert.equal(persistence.canMergeBranchNodeToCol(state.branchNodes[1], 16, state).ok, true);
   assert.equal(persistence.canMergeBranchNodeToCol(state.branchNodes[1], 10, state).ok, true);
+});
+
+test('actual branch merge validation uses actual branch nodes', () => {
+  const state = {
+    actualBranches: [{ id: 'abr1', variantId: 'v1', sourceCol: 6, sourceDate: '2024-07' }],
+    actualBranchNodes: [
+      { id: 'ab1', branchId: 'abr1', col: 7 },
+      { id: 'ab2', branchId: 'abr1', col: 9 },
+    ],
+  };
+
+  assert.equal(persistence.isLastBranchNodeForContext(state.actualBranchNodes[0], state, 'actualBranch'), false);
+  assert.equal(persistence.isLastBranchNodeForContext(state.actualBranchNodes[1], state, 'actualBranch'), true);
+  assert.equal(persistence.canMergeBranchNodeToColForContext(state.actualBranchNodes[0], 10, state, 'actualBranch').ok, false);
+  assert.equal(persistence.canMergeBranchNodeToColForContext(state.actualBranchNodes[1], 10, state, 'actualBranch').ok, true);
 });
 
 test('removeBranchData deletes branch rows and all related branch data', () => {
@@ -392,6 +584,37 @@ test('removeBranchData deletes branch rows and all related branch data', () => {
     actualBranchNodes: [{ id: 'abn2', branchId: 'br2', col: 7 }],
     mergeLinks: [{ id: 'ml2', fromNodeId: 'bn2', fromBranchId: 'br2', toCol: 11 }],
     stageShifts: [{ id: 'ss3', sourceNodeId: 'bn2', sourceContext: 'branch', mode: 'postponed', targetCol: 10 }],
+  });
+});
+
+test('removeActualBranchData deletes only actual branch data and related shifts', () => {
+  const state = {
+    branches: [{ id: 'br1', variantId: 'v1', label: 'Plan branch' }],
+    branchNodes: [{ id: 'bn1', branchId: 'br1', col: 6 }],
+    mergeLinks: [{ id: 'ml1', fromNodeId: 'bn1', fromBranchId: 'br1', toCol: 9 }],
+    actualBranches: [
+      { id: 'abr1', variantId: 'v1', label: 'Delete actual' },
+      { id: 'abr2', variantId: 'v1', label: 'Keep actual' },
+    ],
+    actualBranchNodes: [
+      { id: 'abn1', branchId: 'abr1', col: 6 },
+      { id: 'abn2', branchId: 'abr2', col: 7 },
+    ],
+    actualMergeLinks: [
+      { id: 'aml1', fromNodeId: 'abn1', fromBranchId: 'abr1', toCol: 10 },
+      { id: 'aml2', fromNodeId: 'abn2', fromBranchId: 'abr2', toCol: 11 },
+    ],
+    stageShifts: [
+      { id: 'ss1', sourceNodeId: 'abn1', sourceContext: 'actualBranch', mode: 'postponed', targetCol: 9 },
+      { id: 'ss2', sourceNodeId: 'bn1', sourceContext: 'branch', mode: 'postponed', targetCol: 9 },
+    ],
+  };
+
+  assert.deepEqual(toPlain(persistence.removeActualBranchData(state, 'abr1')), {
+    actualBranches: [{ id: 'abr2', variantId: 'v1', label: 'Keep actual' }],
+    actualBranchNodes: [{ id: 'abn2', branchId: 'abr2', col: 7 }],
+    actualMergeLinks: [{ id: 'aml2', fromNodeId: 'abn2', fromBranchId: 'abr2', toCol: 11 }],
+    stageShifts: [{ id: 'ss2', sourceNodeId: 'bn1', sourceContext: 'branch', mode: 'postponed', targetCol: 9 }],
   });
 });
 
@@ -504,6 +727,7 @@ test('addStageShiftData allows multiple shifts for one source stage', () => {
     mode: 'preponed',
     targetDate: '2024-05',
     targetCol: 4,
+    drsDetail: '  Preponed DRS ready  ',
   });
   const second = persistence.addStageShiftData(first, {
     sourceNodeId: 'p1',
@@ -511,13 +735,52 @@ test('addStageShiftData allows multiple shifts for one source stage', () => {
     mode: 'postponed',
     targetDate: '2024-08',
     targetCol: 7,
+    drsDetail: 'Postponed DRS ready',
   });
 
   assert.equal(second.nid, 22);
   assert.deepEqual(toPlain(second.stageShifts), [
-    { id: 'i20', sourceNodeId: 'p1', sourceContext: 'plan', mode: 'preponed', targetDate: '2024-05', targetCol: 4 },
-    { id: 'i21', sourceNodeId: 'p1', sourceContext: 'plan', mode: 'postponed', targetDate: '2024-08', targetCol: 7 },
+    { id: 'i20', sourceNodeId: 'p1', sourceContext: 'plan', mode: 'preponed', targetDate: '2024-05', targetCol: 4, drsDetail: 'Preponed DRS ready' },
+    { id: 'i21', sourceNodeId: 'p1', sourceContext: 'plan', mode: 'postponed', targetDate: '2024-08', targetCol: 7, drsDetail: 'Postponed DRS ready' },
   ]);
+});
+
+test('stage shift modal requires DRS detail and shifted DRS labels use shift-specific positions', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+
+  assert.match(source, /id="f_shift_drs_detail"/);
+  assert.match(source, /const drsDetail = \$\('f_shift_drs_detail'\)\.value\.trim\(\)/);
+  assert.match(source, /Enter DRS Details for the shifted stage\./);
+  assert.match(source, /drsDetail,/);
+  assert.match(source, /function addShiftDrsDetailLabel/);
+  assert.match(source, /shift-drs:\$\{shift\.id\}/);
+});
+
+test('stage popup uses Plan bottom label options and switches date input type by context', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+
+  assert.match(html, /<select id="npBottom"/);
+  assert.match(html, /<option value="Beg">Beg<\/option>/);
+  assert.match(html, /<option value="Mid">Mid<\/option>/);
+  assert.match(html, /<option value="End">End<\/option>/);
+  assert.match(source, /\$\('npDate'\)\.type = isActualStageContext\(rType\) \? 'date' : 'month'/);
+  assert.match(source, /Enter the actual date\./);
+});
+
+test('stage rendering hides plan dates and formats actual dates below the node', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+
+  assert.match(source, /const dh = isActualStageContext\(rType\) && n\.date \? `<span class="node-date">\$\{fmtActualDate\(n\.date\)\}<\/span>` : ''/);
+});
+
+test('normal stage mouseup opens the edit modal while shifted stage copies stay non-editable', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+
+  assert.match(source, /function openStageEditModal/);
+  assert.match(source, /openStageEditModal\(node, rType\)/);
+  assert.match(source, /function mkShiftedNode/);
+  assert.doesNotMatch(source.slice(source.indexOf('function mkShiftedNode'), source.indexOf('function renderBottomTables')), /openStageEditModal/);
 });
 
 test('removeStageShiftsForNodeData removes shifts for a deleted source stage', () => {
@@ -545,7 +808,7 @@ test('createDataversePayload serializes stage shifts', () => {
     actualBranchNodes: [],
     mergeLinks: [],
     stageShifts: [
-      { id: 's1', sourceNodeId: 'p1', sourceContext: 'plan', mode: 'preponed', targetDate: '2024-05', targetCol: 4 },
+      { id: 's1', sourceNodeId: 'p1', sourceContext: 'plan', mode: 'preponed', targetDate: '2024-05', targetCol: 4, drsDetail: 'Shift DRS ready' },
     ],
     leftTable: { cols: [], rows: [] },
     rightTable: { cols: [], rows: [] },
@@ -556,6 +819,76 @@ test('createDataversePayload serializes stage shifts', () => {
   const payload = persistence.createDataversePayload(state);
 
   assert.deepEqual(JSON.parse(payload.project.stage_shifts_json), state.stageShifts);
+});
+
+test('createDataversePayload serializes plan and actual branch contexts and merge contexts', () => {
+  const state = {
+    projectId: 'local-1',
+    info: { project: 'Alpha' },
+    variants: [{ id: 'v1', name: 'DOM Gas' }],
+    planNodes: [],
+    actualNodes: [],
+    branches: [{ id: 'br1', variantId: 'v1', label: 'Plan branch', sourceCol: 4, sourceDate: '2024-05' }],
+    actualBranches: [{ id: 'abr1', variantId: 'v1', label: 'Actual branch', sourceCol: 6, sourceDate: '2024-07' }],
+    branchNodes: [{ id: 'bn1', branchId: 'br1', col: 5 }],
+    actualBranchNodes: [{ id: 'abn1', branchId: 'abr1', col: 7 }],
+    mergeLinks: [{ id: 'ml1', fromNodeId: 'bn1', fromBranchId: 'br1', toCol: 8, toDate: '2024-09' }],
+    actualMergeLinks: [{ id: 'aml1', fromNodeId: 'abn1', fromBranchId: 'abr1', toCol: 9, toDate: '2024-10' }],
+    stageShifts: [],
+    leftTable: { cols: [], rows: [] },
+    rightTable: { cols: [], rows: [] },
+    years: [2024],
+    eopDate: '',
+  };
+
+  const payload = persistence.createDataversePayload(state);
+
+  assert.deepEqual(toPlain(payload.branches), [
+    {
+      external_id: 'br1',
+      branch_context: 'plan',
+      variant_external_id: 'v1',
+      parent_stage_external_id: '',
+      source_stage_external_id: '',
+      source_month: '2024-05',
+      source_column_index: 4,
+      source_plan_branch_external_id: '',
+      label: 'Plan branch',
+      display_order: 0,
+    },
+    {
+      external_id: 'abr1',
+      branch_context: 'actual',
+      variant_external_id: 'v1',
+      parent_stage_external_id: '',
+      source_stage_external_id: '',
+      source_month: '2024-07',
+      source_column_index: 6,
+      source_plan_branch_external_id: '',
+      label: 'Actual branch',
+      display_order: 0,
+    },
+  ]);
+  assert.deepEqual(toPlain(payload.mergeLinks), [
+    {
+      external_id: 'ml1',
+      merge_context: 'plan',
+      branch_external_id: 'br1',
+      source_stage_external_id: 'bn1',
+      target_stage_external_id: '',
+      target_month: '2024-09',
+      target_column_index: 8,
+    },
+    {
+      external_id: 'aml1',
+      merge_context: 'actual',
+      branch_external_id: 'abr1',
+      source_stage_external_id: 'abn1',
+      target_stage_external_id: '',
+      target_month: '2024-10',
+      target_column_index: 9,
+    },
+  ]);
 });
 
 test('createDataverseDelta reports changed Dataverse entity groups', () => {

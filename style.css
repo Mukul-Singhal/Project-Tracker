@@ -774,9 +774,27 @@ body {
   opacity: .9;
 }
 
+.actual-branch-start-arrow {
+  fill: none;
+  stroke: #f97316;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: .9;
+}
+
 .merge-link-arrow {
   fill: none;
   stroke: #00c9b1;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: .95;
+}
+
+.actual-merge-link-arrow {
+  fill: none;
+  stroke: #f97316;
   stroke-width: 2;
   stroke-linejoin: round;
   stroke-linecap: round;
@@ -1576,11 +1594,13 @@ body {
   letter-spacing: .5px;
 }
 
-input[type="month"] {
+input[type="month"],
+input[type="date"] {
   color-scheme: light
 }
 
-[data-theme="dark"] input[type="month"] {
+[data-theme="dark"] input[type="month"],
+[data-theme="dark"] input[type="date"] {
   color-scheme: dark
 }
 
@@ -1726,7 +1746,8 @@ input[type="month"] {
 }
 
 .form-group input,
-.form-group select {
+.form-group select,
+.form-group textarea {
   padding: 7px 10px;
   border-radius: 7px;
   border: 1px solid var(--border);
@@ -1735,10 +1756,12 @@ input[type="month"] {
   font-family: 'Inter', sans-serif;
   font-size: 12px;
   outline: none;
+  resize: vertical;
 }
 
 .form-group input:focus,
-.form-group select:focus {
+.form-group select:focus,
+.form-group textarea:focus {
   border-color: var(--accent)
 }
 
