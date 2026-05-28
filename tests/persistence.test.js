@@ -28,6 +28,7 @@ module.exports = {
   canMergeBranchNodeToColForContext: typeof canMergeBranchNodeToColForContext === 'function' ? canMergeBranchNodeToColForContext : undefined,
   canStartBranchAtCol,
   canStartBranchAtColForContext: typeof canStartBranchAtColForContext === 'function' ? canStartBranchAtColForContext : undefined,
+  canPlaceBranchStageAtCol: typeof canPlaceBranchStageAtCol === 'function' ? canPlaceBranchStageAtCol : undefined,
   removeBranchNodeData,
   removeBranchData,
   removeActualBranchData: typeof removeActualBranchData === 'function' ? removeActualBranchData : undefined,
@@ -41,6 +42,7 @@ module.exports = {
   createStageNodeData: typeof createStageNodeData === 'function' ? createStageNodeData : undefined,
   updateStageNodeData: typeof updateStageNodeData === 'function' ? updateStageNodeData : undefined,
   fmtActualDate: typeof fmtActualDate === 'function' ? fmtActualDate : undefined,
+  getPdfTimelineSlice: typeof getPdfTimelineSlice === 'function' ? getPdfTimelineSlice : undefined,
 };`;
 
   const sandbox = {
@@ -170,6 +172,49 @@ test('createStageNodeData requires actual full dates and stores actual stages in
   });
   assert.equal(persistence.createStageNodeData(state, 'actual', 2, { date: '' }).ok, false);
   assert.equal(persistence.createStageNodeData(state, 'actualBranch', 2, { date: '2025-04' }).ok, false);
+});
+
+test('canPlaceBranchStageAtCol blocks branch stages before the branch start month', () => {
+  const state = {
+    years: [2024, 2025],
+    branches: [
+      { id: 'br1', sourceCol: 5 },
+      { id: 'br2', sourceDate: '2025-02' },
+      { id: 'legacy' },
+    ],
+    actualBranches: [
+      { id: 'abr1', sourceCol: 8 },
+      { id: 'abr2', sourceDate: '2025-03-18' },
+    ],
+  };
+
+  assert.equal(persistence.canPlaceBranchStageAtCol(state, 'branch', 'br1', 4).ok, false);
+  assert.equal(persistence.canPlaceBranchStageAtCol(state, 'branch', 'br1', 5).ok, true);
+  assert.equal(persistence.canPlaceBranchStageAtCol(state, 'branch', 'br1', 6).ok, true);
+  assert.equal(persistence.canPlaceBranchStageAtCol(state, 'branch', 'br2', 12).ok, false);
+  assert.equal(persistence.canPlaceBranchStageAtCol(state, 'branch', 'br2', 13).ok, true);
+  assert.equal(persistence.canPlaceBranchStageAtCol(state, 'actualBranch', 'abr1', 7).ok, false);
+  assert.equal(persistence.canPlaceBranchStageAtCol(state, 'actualBranch', 'abr1', 8).ok, true);
+  assert.equal(persistence.canPlaceBranchStageAtCol(state, 'actualBranch', 'abr2', 13).ok, false);
+  assert.equal(persistence.canPlaceBranchStageAtCol(state, 'actualBranch', 'abr2', 14).ok, true);
+  assert.equal(persistence.canPlaceBranchStageAtCol(state, 'branch', 'legacy', 0).ok, true);
+});
+
+test('branch stage create and edit helpers reject placement before the branch start', () => {
+  const state = {
+    years: [2024, 2025],
+    branches: [{ id: 'br1', sourceCol: 5 }],
+    actualBranches: [{ id: 'abr1', sourceDate: '2024-08' }],
+    branchNodes: [{ id: 'bn1', branchId: 'br1', col: 6, type: 'square', topLabel: 'Old', bottomLabel: 'Beg', date: '2024-07' }],
+    actualBranchNodes: [{ id: 'abn1', branchId: 'abr1', col: 8, type: 'square', topLabel: 'Old', bottomLabel: '', date: '2024-09-01' }],
+  };
+
+  assert.equal(persistence.createStageNodeData(state, 'branch', 4, { bottomLabel: 'Beg', date: '' }, 'br1').ok, false);
+  assert.equal(persistence.createStageNodeData(state, 'branch', 5, { bottomLabel: 'Beg', date: '' }, 'br1').ok, true);
+  assert.equal(persistence.updateStageNodeData(state, 'branch', 'bn1', { date: '2024-05' }).ok, false);
+  assert.equal(persistence.updateStageNodeData(state, 'branch', 'bn1', { date: '2024-06' }).ok, true);
+  assert.equal(persistence.updateStageNodeData(state, 'actualBranch', 'abn1', { date: '2024-07-15' }).ok, false);
+  assert.equal(persistence.updateStageNodeData(state, 'actualBranch', 'abn1', { date: '2024-08-15' }).ok, true);
 });
 
 test('updateStageNodeData edits the correct stage collection and recalculates the date column', () => {
@@ -754,6 +799,81 @@ test('stage shift modal requires DRS detail and shifted DRS labels use shift-spe
   assert.match(source, /drsDetail,/);
   assert.match(source, /function addShiftDrsDetailLabel/);
   assert.match(source, /shift-drs:\$\{shift\.id\}/);
+});
+
+test('grid DRS and remark labels wrap full text instead of truncating it', () => {
+  const style = fs.readFileSync(path.join(__dirname, '..', 'style.css'), 'utf8');
+  const drsStart = style.indexOf('.drs-detail-label');
+  const drsEnd = style.indexOf('[data-theme="dark"] .eop-label');
+  const remarkStart = style.indexOf('.canvas-remark');
+  const remarkEnd = style.indexOf('[data-theme="dark"] .canvas-remark');
+
+  assert.notEqual(drsStart, -1);
+  assert.notEqual(drsEnd, -1);
+  assert.notEqual(remarkStart, -1);
+  assert.notEqual(remarkEnd, -1);
+  const drsCss = style.slice(drsStart, drsEnd);
+  const remarkCss = style.slice(remarkStart, remarkEnd);
+
+  assert.match(drsCss, /white-space:\s*normal/);
+  assert.match(drsCss, /overflow-wrap:\s*anywhere/);
+  assert.doesNotMatch(drsCss, /text-overflow:\s*ellipsis/);
+  assert.doesNotMatch(drsCss, /overflow:\s*hidden/);
+  assert.match(remarkCss, /white-space:\s*normal/);
+  assert.match(remarkCss, /overflow-wrap:\s*anywhere/);
+});
+
+test('branch row cells before the branch start are disabled and placement is validated in UI paths', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+
+  assert.match(source, /branch-stage-disabled/);
+  assert.match(source, /canPlaceBranchStageAtCol\(state, rType, branchId, col\)/);
+  assert.match(source, /canPlaceBranchStageAtCol\(store\.getState\(\), rType, branchId, newCol\)/);
+});
+
+test('getPdfTimelineSlice returns one squeezed month-aligned readable viewport', () => {
+  const slice = persistence.getPdfTimelineSlice({
+    totalCols: 36,
+    colWidth: 52,
+    timelineWidthPx: 700,
+    horizontalScale: 0.8,
+  });
+
+  assert.deepEqual(toPlain(slice), {
+    startCol: 0,
+    endCol: 16,
+    startX: 0,
+    width: 665.6,
+    exportColWidth: 41.6,
+    horizontalScale: 0.8,
+  });
+  assert.equal(slice.width / slice.exportColWidth, 16);
+  assert.ok(slice.width <= 700);
+});
+
+test('PDF export builds one timeline-only root and no longer captures the full app', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const start = source.indexOf('async function exportPDF');
+  const end = source.indexOf('// ════════════════════════════════════════════════════════════════', start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const fn = source.slice(start, end);
+
+  assert.match(source, /function buildPdfExportRoot/);
+  assert.match(source, /function getPdfTimelineSlice/);
+  assert.match(source, /PDF_EXPORT_HORIZONTAL_SCALE = 0\.8/);
+  assert.match(source, /pdf-export-root/);
+  assert.match(source, /scaleX\(\$\{horizontalScale\}\)/);
+  assert.match(fn, /buildPdfExportRoot\(/);
+  assert.match(fn, /horizontalScale: PDF_EXPORT_HORIZONTAL_SCALE/);
+  assert.match(fn, /html2canvas\(pageRoot/);
+  assert.match(fn, /Rendering timeline table/);
+  assert.doesNotMatch(fn, /pdf\.addPage/);
+  assert.doesNotMatch(fn, /for \(let i = 0; i < slices\.length; i\+\+\)/);
+  assert.doesNotMatch(fn, /document\.querySelector\('\.app'\)/);
+  assert.doesNotMatch(fn, /html2canvas\(app/);
+  assert.doesNotMatch(fn, /model-header/);
+  assert.doesNotMatch(fn, /bottom-section/);
 });
 
 test('stage popup uses Plan bottom label options and switches date input type by context', () => {

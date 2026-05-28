@@ -3,6 +3,7 @@
 // ════════════════════════════════════════════════════════════════
 
 const COL = 52, ROH = 90, YH = 34, MH = 30;
+const PDF_EXPORT_HORIZONTAL_SCALE = 0.8;
 const SHIFT_ARROW_ARCH = 46;
 const $ = id => document.getElementById(id);
 const NODE_SHAPES = [{ value: 'square', label: 'Square' }, { value: 'circle', label: 'Circle' }];
@@ -441,6 +442,8 @@ function prepareStageNodeData(state, rType, currentCol, data, existing) {
   if (!Number.isFinite(col) || col < 0) {
     return { ok: false, reason: 'Selected date is outside the visible timeline.' };
   }
+  const branchValidation = canPlaceBranchStageAtCol(state, rType, (data && data.branchId) || (existing && existing.branchId), col);
+  if (!branchValidation.ok) return branchValidation;
 
   return {
     ok: true,
@@ -457,8 +460,8 @@ function prepareStageNodeData(state, rType, currentCol, data, existing) {
   };
 }
 
-function createStageNodeData(state, rType, clickedCol, data) {
-  return prepareStageNodeData(state, rType, clickedCol, data || {}, null);
+function createStageNodeData(state, rType, clickedCol, data, branchId) {
+  return prepareStageNodeData(state, rType, clickedCol, { ...(data || {}), branchId }, null);
 }
 
 function updateStageNodeData(state, rType, nodeId, data) {
@@ -486,11 +489,49 @@ function updateStageNodeData(state, rType, nodeId, data) {
   };
 }
 
+function getBranchStartCol(state, rType, branchId) {
+  if (!branchId || (rType !== 'branch' && rType !== 'actualBranch')) return null;
+  const branches = rType === 'actualBranch' ? (state.actualBranches || []) : (state.branches || []);
+  const branch = branches.find(b => b.id === branchId);
+  if (!branch) return null;
+  if (Number.isFinite(branch.sourceCol)) return branch.sourceCol;
+  const col = dateToCol(branch.sourceDate, state);
+  return col >= 0 ? col : null;
+}
+
+function canPlaceBranchStageAtCol(state, rType, branchId, col) {
+  if (rType !== 'branch' && rType !== 'actualBranch') return { ok: true, reason: '' };
+  if (!Number.isFinite(col)) return { ok: false, reason: 'Select a valid branch stage month.' };
+  const startCol = getBranchStartCol(state, rType, branchId);
+  if (startCol == null) return { ok: true, reason: '' };
+  return col >= startCol
+    ? { ok: true, reason: '' }
+    : { ok: false, reason: 'Branch stages cannot be before the branch start month.' };
+}
+
 function colToDate(col, state) {
   const year = state.years[Math.floor(col / 12)];
   const month = (col % 12) + 1;
   if (!year || month < 1 || month > 12) return '';
   return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+function getPdfTimelineSlice({ totalCols, colWidth, timelineWidthPx, horizontalScale = 1 }) {
+  const safeTotalCols = Math.max(0, Number(totalCols) || 0);
+  const safeColWidth = Math.max(1, Number(colWidth) || COL);
+  const safeScale = Math.min(1, Math.max(0.5, Number(horizontalScale) || 1));
+  const exportColWidth = safeColWidth * safeScale;
+  const safeTimelineWidth = Math.max(exportColWidth, Number(timelineWidthPx) || exportColWidth);
+  const colsPerPage = Math.max(1, Math.floor(safeTimelineWidth / exportColWidth));
+  const endCol = Math.max(1, Math.min(safeTotalCols || 1, colsPerPage));
+  return {
+    startCol: 0,
+    endCol,
+    startX: 0,
+    width: endCol * exportColWidth,
+    exportColWidth,
+    horizontalScale: safeScale,
+  };
 }
 
 function getDiscussionPeriodCols(state) {
@@ -1408,11 +1449,13 @@ function makeBranchSubRow(tc, branchId, rType, label, state) {
   sr.style.position = 'relative';
   for (let col = 0; col < tc; col++) {
     const c = document.createElement('div');
-    c.className = ['g-cell', getDiscussionPeriodClass(col, state)].filter(Boolean).join(' ');
+    const placement = canPlaceBranchStageAtCol(state, rType, branchId, col);
+    c.className = ['g-cell', getDiscussionPeriodClass(col, state), placement.ok ? '' : 'branch-stage-disabled'].filter(Boolean).join(' ');
     c.dataset.col = col;
     c.dataset.branchId = branchId;
     c.dataset.rType = rType;
-    c.addEventListener('click', onCellClick);
+    if (placement.ok) c.addEventListener('click', onCellClick);
+    else c.title = placement.reason;
     sr.appendChild(c);
   }
   const pill = document.createElement('div');
@@ -1765,7 +1808,7 @@ function addDrsDetailLabel(grp, node, x, y, state) {
   el.dataset.labelKey = `drs:${node.id}`;
   el.title = text;
   el.textContent = text;
-  const labelWidth = 150;
+  const labelWidth = 240;
   const gridW = totalCols(state) * COL;
   const rightFits = x + 22 + labelWidth < gridW;
   const defaultPos = { x: rightFits ? x + 22 : Math.max(4, x - labelWidth - 22), y: y + 12 };
@@ -1831,7 +1874,7 @@ function addShiftDrsDetailLabel(grp, shift, x, y, state) {
   el.dataset.labelKey = `shift-drs:${shift.id}`;
   el.title = text;
   el.textContent = text;
-  const labelWidth = 150;
+  const labelWidth = 240;
   const gridW = totalCols(state) * COL;
   const rightFits = x + 28 + labelWidth < gridW;
   const defaultPos = { x: rightFits ? x + 28 : Math.max(4, x - labelWidth - 28), y: Math.max(4, y - 38) };
@@ -2064,32 +2107,111 @@ function updateMergeTargetClasses() {
   });
 }
 
+function buildPdfExportRoot(slice, metrics) {
+  const horizontalScale = slice.horizontalScale || 1;
+  const root = document.createElement('div');
+  root.className = 'pdf-export-root';
+  root.style.width = `${metrics.sidebarWidth + slice.width}px`;
+  root.style.height = `${metrics.headerHeight + metrics.gridHeight}px`;
+
+  const table = document.createElement('div');
+  table.className = 'pdf-export-table';
+
+  const sidebarClone = $('sidebar').cloneNode(true);
+  sidebarClone.classList.add('pdf-export-sidebar');
+  sidebarClone.style.width = `${metrics.sidebarWidth}px`;
+  sidebarClone.style.minWidth = `${metrics.sidebarWidth}px`;
+  sidebarClone.style.maxWidth = `${metrics.sidebarWidth}px`;
+  sidebarClone.style.height = `${metrics.headerHeight + metrics.gridHeight}px`;
+  const sidebarRows = sidebarClone.querySelector('.sidebar-rows');
+  if (sidebarRows) {
+    sidebarRows.style.overflow = 'visible';
+    sidebarRows.style.height = `${metrics.gridHeight}px`;
+  }
+
+  const timeline = document.createElement('div');
+  timeline.className = 'pdf-export-timeline';
+  timeline.style.width = `${slice.width}px`;
+  timeline.style.height = `${metrics.headerHeight + metrics.gridHeight}px`;
+
+  const headerClip = document.createElement('div');
+  headerClip.className = 'pdf-export-header-clip';
+  headerClip.style.width = `${slice.width}px`;
+  headerClip.style.height = `${metrics.headerHeight}px`;
+
+  const headerInner = document.createElement('div');
+  headerInner.className = 'pdf-export-header-inner';
+  headerInner.style.width = `${metrics.timelineWidth}px`;
+  headerInner.style.transform = `translateX(-${slice.startX}px) scaleX(${horizontalScale})`;
+  headerInner.appendChild(yearHeader.cloneNode(true));
+  headerInner.appendChild(monthHeader.cloneNode(true));
+  headerClip.appendChild(headerInner);
+
+  const gridClip = document.createElement('div');
+  gridClip.className = 'pdf-export-grid-clip';
+  gridClip.style.width = `${slice.width}px`;
+  gridClip.style.height = `${metrics.gridHeight}px`;
+
+  const gridClone = tlGrid.cloneNode(true);
+  gridClone.classList.add('pdf-export-grid');
+  gridClone.style.width = `${metrics.timelineWidth}px`;
+  gridClone.style.transform = `translateX(-${slice.startX}px) scaleX(${horizontalScale})`;
+  gridClip.appendChild(gridClone);
+
+  timeline.appendChild(headerClip);
+  timeline.appendChild(gridClip);
+  table.appendChild(sidebarClone);
+  table.appendChild(timeline);
+  root.appendChild(table);
+
+  root.querySelectorAll('.node-del,.vr-del-btn,.vt-del-btn,.branch-pill-del,.col-del,.row-del,.sidebar-resize-handle').forEach(el => el.remove());
+  return root;
+}
+
 async function exportPDF() {
   const overlay = $('pdfOverlay'), st = $('pdfStatus');
   overlay.classList.add('active');
-  st.textContent = 'Capturing…';
-  const app = document.querySelector('.app');
-  const prev = { h: app.style.height, of: app.style.overflow };
-  app.style.height = 'auto';
-  app.style.overflow = 'visible';
-  document.querySelectorAll('.node-del,.vr-del-btn,.col-del,.row-del').forEach(el => el.style.display = 'none');
+  st.textContent = 'Preparing timeline table…';
+  let pageRoot = null;
   await new Promise(r => setTimeout(r, 160));
   try {
-    st.textContent = 'Rendering…';
-    const canvas = await html2canvas(app, {
-      scale: 2, useCORS: true,
-      backgroundColor: document.body.dataset.theme === 'dark' ? '#0d1117' : '#dbe8f5',
-      scrollX: 0, scrollY: 0, width: app.scrollWidth, height: app.scrollHeight,
-      windowWidth: app.scrollWidth, windowHeight: app.scrollHeight,
-    });
-    st.textContent = 'Building PDF…';
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const pW = pdf.internal.pageSize.getWidth(), pH = pdf.internal.pageSize.getHeight(), mg = 8;
     const maxW = pW - mg * 2, maxH = pH - mg * 2;
+    const sidebarWidth = Math.ceil($('sidebar').getBoundingClientRect().width || $('sidebar').scrollWidth || 360);
+    const timelineWidth = totalCols(store.getState()) * COL;
+    const gridHeight = Math.ceil(tlGrid.scrollHeight || tlGrid.getBoundingClientRect().height || getGridGroupH(store.getState()));
+    const headerHeight = YH + MH;
+    const pxPerMm = 4;
+    const timelinePageWidth = Math.max(COL, Math.floor(maxW * pxPerMm - sidebarWidth));
+    const slice = getPdfTimelineSlice({
+      totalCols: totalCols(store.getState()),
+      colWidth: COL,
+      timelineWidthPx: timelinePageWidth,
+      horizontalScale: PDF_EXPORT_HORIZONTAL_SCALE,
+    });
+
+    st.textContent = 'Rendering timeline table…';
+    pageRoot = buildPdfExportRoot(slice, { sidebarWidth, timelineWidth, gridHeight, headerHeight });
+    document.body.appendChild(pageRoot);
+    const captureWidth = pageRoot.offsetWidth;
+    const captureHeight = pageRoot.offsetHeight;
+    const canvas = await html2canvas(pageRoot, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: document.body.dataset.theme === 'dark' ? '#0d1117' : '#dbe8f5',
+      scrollX: 0,
+      scrollY: 0,
+      width: captureWidth,
+      height: captureHeight,
+      windowWidth: captureWidth,
+      windowHeight: captureHeight,
+    });
     const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
     const iW = canvas.width * ratio, iH = canvas.height * ratio;
     pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', mg + (maxW - iW) / 2, mg + (maxH - iH) / 2, iW, iH);
+    st.textContent = 'Building PDF…';
     pdf.save(`${store.getState().info.project || 'timeline'}_A4.pdf`);
     st.textContent = 'Done!';
     setTimeout(() => overlay.classList.remove('active'), 700);
@@ -2097,9 +2219,7 @@ async function exportPDF() {
     st.textContent = 'Error: ' + err.message;
     setTimeout(() => overlay.classList.remove('active'), 2500);
   } finally {
-    app.style.height = prev.h;
-    app.style.overflow = prev.of;
-    document.querySelectorAll('.node-del,.vr-del-btn,.col-del,.row-del').forEach(el => el.style.display = '');
+    if (pageRoot) pageRoot.remove();
   }
 }
 
@@ -2171,6 +2291,11 @@ function onCellClick(e) {
   const vId = cell.dataset.vId;
   const rType = cell.dataset.rType;
   const branchId = cell.dataset.branchId || null;
+  const placement = canPlaceBranchStageAtCol(store.getState(), rType, branchId, col);
+  if (!placement.ok) {
+    alert(placement.reason);
+    return;
+  }
   pendCell = { col, vId, rType, branchId };
   const r = cell.getBoundingClientRect();
   nodePopup.style.cssText = `left:${r.left}px;top:${r.bottom + 4}px`;
@@ -2212,7 +2337,7 @@ $('npConfirm').addEventListener('click', () => {
     date,
     isDRS: $('npIsDRS').checked,
     drsDetail: $('npIsDRS').checked ? $('npDrsDetail').value.trim() : '',
-  });
+  }, branchId);
   if (!prepared.ok) {
     alert(prepared.reason);
     return;
@@ -2423,6 +2548,7 @@ function openStageEditModal(node, rType) {
       topLabel: $('f_stage_top').value.trim(),
       bottomLabel: isPlanStageContext(rType) ? $('f_stage_bottom').value : '',
       date,
+      branchId: node.branchId,
     };
     const validation = updateStageNodeData(store.getState(), rType, node.id, data);
     if (validation.ok === false) {
@@ -2574,6 +2700,14 @@ function onNodeUp(e) {
   document.removeEventListener('mouseup', onNodeUp);
   if (!moved) {
     openStageEditModal(node, rType);
+    return;
+  }
+  const branchId = dragNode && dragNode.dataset.branchId || (node && node.branchId) || null;
+  const placement = canPlaceBranchStageAtCol(store.getState(), rType, branchId, newCol);
+  if (!placement.ok) {
+    alert(placement.reason);
+    const s = store.getState();
+    renderGrid(s); renderNodes(s);
     return;
   }
   const a = store.getState();

@@ -1465,7 +1465,7 @@ body {
 .canvas-remark {
   position: absolute;
   z-index: 7;
-  max-width: 260px;
+  max-width: 360px;
   padding: 6px 10px;
   border-radius: 10px;
   border: 1px solid rgba(37, 99, 235, .35);
@@ -1473,6 +1473,9 @@ body {
   color: var(--text);
   font-size: 12px;
   font-weight: 600;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
   box-shadow: 0 4px 16px rgba(15, 23, 42, .12);
   cursor: move;
   user-select: none;
@@ -1766,6 +1769,46 @@ input[type="date"] {
 }
 
 /* ── PDF ── */
+.pdf-export-root {
+  position: fixed;
+  left: -100000px;
+  top: 0;
+  z-index: -1;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+.pdf-export-table {
+  display: flex;
+  align-items: flex-start;
+  background: var(--bg);
+}
+
+.pdf-export-sidebar {
+  flex: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.pdf-export-timeline {
+  flex: none;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.pdf-export-header-clip,
+.pdf-export-grid-clip {
+  position: relative;
+  overflow: hidden;
+}
+
+.pdf-export-header-inner,
+.pdf-export-grid {
+  position: relative;
+  transform-origin: top left;
+}
+
 .pdf-overlay {
   display: none;
   position: fixed;
@@ -1865,7 +1908,7 @@ input[type="date"] {
 .drs-detail-label {
   position: absolute;
   z-index: 8;
-  max-width: 150px;
+  max-width: 240px;
   min-height: 20px;
   padding: 4px 7px;
   border: 1px solid rgba(37, 99, 235, .32);
@@ -1875,12 +1918,16 @@ input[type="date"] {
   font-size: 10px;
   font-weight: 700;
   line-height: 1.25;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
   box-shadow: 0 4px 10px rgba(20, 40, 80, .14);
   cursor: move;
   user-select: none;
+}
+
+.branch-stage-disabled {
+  cursor: not-allowed;
+  background: rgba(148, 163, 184, .08);
 }
 
 [data-theme="dark"] .eop-label {
