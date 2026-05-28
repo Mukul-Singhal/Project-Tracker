@@ -412,6 +412,19 @@ function dateToCol(date, state) {
   return yearIndex * 12 + month - 1;
 }
 
+function colToInputMonth(col, state) {
+  if (!Number.isFinite(col) || col < 0 || !state.years.length) return '';
+  const startYear = Number(state.years[0]);
+  const year = startYear + Math.floor(col / 12);
+  const month = (col % 12) + 1;
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+function colToInputDate(col, state) {
+  const month = colToInputMonth(col, state);
+  return month ? `${month}-01` : '';
+}
+
 function isPlanStageContext(rType) {
   return rType === 'plan' || rType === 'branch';
 }
@@ -763,6 +776,9 @@ function canMergeBranchNodeToColForContext(node, col, state, context) {
   }
   if (!Number.isFinite(col)) {
     return { ok: false, reason: 'Select a valid merge month.' };
+  }
+  if (!Number.isFinite(node.col) || col <= node.col) {
+    return { ok: false, reason: 'Merge month must be after the branch stage month.' };
   }
   return { ok: true, reason: '' };
 }
@@ -1567,7 +1583,7 @@ function drawRelationshipArrows(grp, state) {
     const from = getBranchSourcePoint(br, state);
     const to = firstChild ? getBranchNodeCenter(firstChild, state) : getBranchLaneAnchorPoint(br, state);
     if (!from || !to) return;
-    addArrowPath(svg, from, to, 'branch-start-arrow', 'branchStartArrow');
+    addBranchStartPath(svg, from, to, 'branch-start-arrow', 'branchStartArrow');
     hasArrows = true;
   });
 
@@ -1576,7 +1592,7 @@ function drawRelationshipArrows(grp, state) {
     const from = getActualBranchSourcePoint(br, state);
     const to = firstChild ? getActualBranchNodeCenter(firstChild, state) : getActualBranchLaneAnchorPoint(br, state);
     if (!from || !to) return;
-    addArrowPath(svg, from, to, 'actual-branch-start-arrow', 'actualBranchStartArrow');
+    addBranchStartPath(svg, from, to, 'actual-branch-start-arrow', 'actualBranchStartArrow');
     hasArrows = true;
   });
 
@@ -1648,6 +1664,14 @@ function addArrowPath(svg, from, to, cls, markerId) {
   const midY = from.y + (to.y - from.y) / 2;
   path.setAttribute('class', cls);
   path.setAttribute('d', `M ${from.x} ${from.y} L ${from.x} ${midY} L ${to.x} ${midY} L ${to.x} ${to.y}`);
+  path.setAttribute('marker-end', `url(#${markerId})`);
+  svg.appendChild(path);
+}
+
+function addBranchStartPath(svg, from, to, cls, markerId) {
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('class', cls);
+  path.setAttribute('d', `M ${from.x} ${from.y} L ${from.x} ${to.y} L ${to.x} ${to.y}`);
   path.setAttribute('marker-end', `url(#${markerId})`);
   svg.appendChild(path);
 }
@@ -1894,8 +1918,7 @@ function mkShiftedNode(source, shift) {
     <span class="node-label-top">${escapeHtml(source.topLabel || '')}</span>
     <div class="node-shape ${shape}"></div>
     <span class="node-label-bottom">${escapeHtml(source.bottomLabel || '')}</span>
-    ${shift.targetDate ? `<span class="node-date">${fmtDate(shift.targetDate)}</span>` : ''}
-    <span class="shift-mode-label">${shift.mode === 'preponed' ? 'Preponed' : 'Postponed'}</span>`;
+    ${shift.targetDate ? `<span class="node-date">${fmtDate(shift.targetDate)}</span>` : ''}`;
   return el;
 }
 
@@ -2287,11 +2310,12 @@ function onCellClick(e) {
   if (e.target.closest('.node')) return;
   if (mergePick) { clearMergePick(); return; }
   const cell = e.currentTarget;
+  const state = store.getState();
   const col = +cell.dataset.col;
   const vId = cell.dataset.vId;
   const rType = cell.dataset.rType;
   const branchId = cell.dataset.branchId || null;
-  const placement = canPlaceBranchStageAtCol(store.getState(), rType, branchId, col);
+  const placement = canPlaceBranchStageAtCol(state, rType, branchId, col);
   if (!placement.ok) {
     alert(placement.reason);
     return;
@@ -2303,7 +2327,7 @@ function onCellClick(e) {
   configureNodePopupForContext(rType);
   $('npTop').value = '';
   $('npBottom').value = '';
-  $('npDate').value = '';
+  $('npDate').value = isActualStageContext(rType) ? colToInputDate(col, state) : colToInputMonth(col, state);
   $('npShape').value = $('nodeTypeSelect').value;
   $('npIsDRS').checked = false;
   $('npDrsDetail').style.display = 'none';
@@ -2317,6 +2341,8 @@ function configureNodePopupForContext(rType) {
   bottom.disabled = !isPlanStageContext(rType);
   $('npDate').type = isActualStageContext(rType) ? 'date' : 'month';
   $('npDate').required = isActualStageContext(rType);
+  $('npDate').min = '';
+  $('npDate').max = '';
 }
 
 // ── Node popup ──
@@ -2444,7 +2470,8 @@ $('ctxMerge').addEventListener('click', e => {
     ? store.getState().actualBranchNodes.find(n => n.id === ctxId)
     : store.getState().branchNodes.find(n => n.id === ctxId);
   if (!fromNode) return;
-  openModal('Merge Branch', `<div class="form-group"><label>Merge Month</label><input id="f_merge_month" type="month"/></div>`, () => {
+  const mergeMinMonth = colToInputMonth(fromNode.col + 1, store.getState());
+  openModal('Merge Branch', `<div class="form-group"><label>Merge Month</label><input id="f_merge_month" type="month" min="${mergeMinMonth}"/></div>`, () => {
     const date = $('f_merge_month').value;
     if (!date) {
       alert('Select a merge month.');
@@ -2489,8 +2516,11 @@ function openStageShiftModal(mode) {
   if (!source) return;
   const title = mode === 'preponed' ? 'Preponed Stage' : 'Postponed Stage';
   const label = mode === 'preponed' ? 'Preponed Month' : 'Postponed Month';
+  const shiftBound = mode === 'preponed'
+    ? `max="${colToInputMonth(source.col - 1, state)}"`
+    : `min="${colToInputMonth(source.col + 1, state)}"`;
   openModal(title, `
-    <div class="form-group"><label>${label}</label><input id="f_shift_month" type="month"/></div>
+    <div class="form-group"><label>${label}</label><input id="f_shift_month" type="month" ${shiftBound}/></div>
     <div class="form-group"><label>DRS Details</label><textarea id="f_shift_drs_detail" rows="3" placeholder="Enter DRS Details"></textarea></div>`, () => {
     const date = $('f_shift_month').value;
     const drsDetail = $('f_shift_drs_detail').value.trim();

@@ -29,6 +29,8 @@ module.exports = {
   canStartBranchAtCol,
   canStartBranchAtColForContext: typeof canStartBranchAtColForContext === 'function' ? canStartBranchAtColForContext : undefined,
   canPlaceBranchStageAtCol: typeof canPlaceBranchStageAtCol === 'function' ? canPlaceBranchStageAtCol : undefined,
+  colToInputMonth: typeof colToInputMonth === 'function' ? colToInputMonth : undefined,
+  colToInputDate: typeof colToInputDate === 'function' ? colToInputDate : undefined,
   removeBranchNodeData,
   removeBranchData,
   removeActualBranchData: typeof removeActualBranchData === 'function' ? removeActualBranchData : undefined,
@@ -117,6 +119,15 @@ test('dateToCol accepts full dates by using the year and month portion', () => {
   assert.equal(persistence.dateToCol('2025-01-01', state), 12);
   assert.equal(persistence.dateToCol('2024-07', state), 6);
   assert.equal(persistence.dateToCol('2024-13-01', state), -1);
+});
+
+test('column input date helpers return picker-friendly month and date values', () => {
+  const state = { years: [2024, 2025] };
+
+  assert.equal(persistence.colToInputMonth(6, state), '2024-07');
+  assert.equal(persistence.colToInputMonth(24, state), '2026-01');
+  assert.equal(persistence.colToInputDate(6, state), '2024-07-01');
+  assert.equal(persistence.colToInputMonth(-1, state), '');
 });
 
 test('createStageNodeData moves plan stages to selected month and keeps clicked month when date is blank', () => {
@@ -563,7 +574,7 @@ test('canStartBranchAtColForContext supports actual branch starts from actual st
   assert.equal(persistence.canStartBranchAtColForContext(state, 'plan', 'v1', 4), true);
 });
 
-test('canMergeBranchNodeToCol allows the last branch stage to merge to any month', () => {
+test('canMergeBranchNodeToCol only allows the last branch stage to merge after its month', () => {
   const state = {
     branches: [{ id: 'br1', variantId: 'v1', sourceCol: 4, sourceDate: '2024-05' }],
     planNodes: [
@@ -577,7 +588,9 @@ test('canMergeBranchNodeToCol allows the last branch stage to merge to any month
   };
 
   assert.equal(persistence.canMergeBranchNodeToCol(state.branchNodes[0], 9, state).ok, false);
-  assert.equal(persistence.canMergeBranchNodeToCol(state.branchNodes[1], 7, state).ok, true);
+  assert.equal(persistence.canMergeBranchNodeToCol(state.branchNodes[1], 7, state).ok, false);
+  assert.equal(persistence.canMergeBranchNodeToCol(state.branchNodes[1], 8, state).ok, false);
+  assert.equal(persistence.canMergeBranchNodeToCol(state.branchNodes[1], 9, state).ok, true);
   assert.equal(persistence.canMergeBranchNodeToCol(state.branchNodes[1], 12, state).ok, true);
   assert.equal(persistence.canMergeBranchNodeToCol(state.branchNodes[1], 16, state).ok, true);
   assert.equal(persistence.canMergeBranchNodeToCol(state.branchNodes[1], 10, state).ok, true);
@@ -595,6 +608,8 @@ test('actual branch merge validation uses actual branch nodes', () => {
   assert.equal(persistence.isLastBranchNodeForContext(state.actualBranchNodes[0], state, 'actualBranch'), false);
   assert.equal(persistence.isLastBranchNodeForContext(state.actualBranchNodes[1], state, 'actualBranch'), true);
   assert.equal(persistence.canMergeBranchNodeToColForContext(state.actualBranchNodes[0], 10, state, 'actualBranch').ok, false);
+  assert.equal(persistence.canMergeBranchNodeToColForContext(state.actualBranchNodes[1], 8, state, 'actualBranch').ok, false);
+  assert.equal(persistence.canMergeBranchNodeToColForContext(state.actualBranchNodes[1], 9, state, 'actualBranch').ok, false);
   assert.equal(persistence.canMergeBranchNodeToColForContext(state.actualBranchNodes[1], 10, state, 'actualBranch').ok, true);
 });
 
@@ -680,6 +695,21 @@ test('branch source connector renders even before the branch has stages', () => 
 
   assert.match(source, /function getBranchLaneAnchorPoint/);
   assert.match(source, /const to = firstChild \? getBranchNodeCenter\(firstChild, state\) : getBranchLaneAnchorPoint\(br, state\)/);
+  assert.match(source, /function addBranchStartPath/);
+  assert.match(source, /addBranchStartPath\(svg, from, to, 'branch-start-arrow', 'branchStartArrow'\)/);
+  assert.match(source, /addBranchStartPath\(svg, from, to, 'actual-branch-start-arrow', 'actualBranchStartArrow'\)/);
+});
+
+test('branch start connector stays aligned to the source month column', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const start = source.indexOf('function addBranchStartPath');
+  const end = source.indexOf('function addMergeBackPath', start);
+
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const fn = source.slice(start, end);
+  assert.match(fn, /M \$\{from\.x\} \$\{from\.y\} L \$\{from\.x\} \$\{to\.y\} L \$\{to\.x\} \$\{to\.y\}/);
+  assert.doesNotMatch(fn, /elbowX|routeOffset|getBranchStartRouteOffset/);
 });
 
 test('merge back connector is a plain orthogonal line without an arrow marker', () => {
@@ -885,7 +915,17 @@ test('stage popup uses Plan bottom label options and switches date input type by
   assert.match(html, /<option value="Mid">Mid<\/option>/);
   assert.match(html, /<option value="End">End<\/option>/);
   assert.match(source, /\$\('npDate'\)\.type = isActualStageContext\(rType\) \? 'date' : 'month'/);
+  assert.match(source, /\$\('npDate'\)\.value = isActualStageContext\(rType\) \? colToInputDate\(col, state\) : colToInputMonth\(col, state\)/);
   assert.match(source, /Enter the actual date\./);
+});
+
+test('merge and shift modals set date picker bounds from the source stage month', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+
+  assert.match(source, /const mergeMinMonth = colToInputMonth\(fromNode\.col \+ 1, store\.getState\(\)\)/);
+  assert.match(source, /<input id="f_merge_month" type="month" min="\$\{mergeMinMonth\}"/);
+  assert.match(source, /max="\$\{colToInputMonth\(source\.col - 1, state\)\}"/);
+  assert.match(source, /min="\$\{colToInputMonth\(source\.col \+ 1, state\)\}"/);
 });
 
 test('stage rendering hides plan dates and formats actual dates below the node', () => {
@@ -900,7 +940,10 @@ test('normal stage mouseup opens the edit modal while shifted stage copies stay 
   assert.match(source, /function openStageEditModal/);
   assert.match(source, /openStageEditModal\(node, rType\)/);
   assert.match(source, /function mkShiftedNode/);
-  assert.doesNotMatch(source.slice(source.indexOf('function mkShiftedNode'), source.indexOf('function renderBottomTables')), /openStageEditModal/);
+  const fn = source.slice(source.indexOf('function mkShiftedNode'), source.indexOf('function renderBottomTables'));
+  assert.doesNotMatch(fn, /openStageEditModal/);
+  assert.doesNotMatch(fn, /shift-mode-label/);
+  assert.doesNotMatch(fn, /Preponed|Postponed/);
 });
 
 test('removeStageShiftsForNodeData removes shifts for a deleted source stage', () => {

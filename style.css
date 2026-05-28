@@ -949,26 +949,6 @@ body {
   text-shadow: 0 1px 0 rgba(255, 255, 255, .8);
 }
 
-.shift-mode-label {
-  position: absolute;
-  top: calc(100% + 14px);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 1px 5px;
-  border-radius: 5px;
-  background: rgba(220, 38, 38, .1);
-  color: #991b1b;
-  font-size: 8px;
-  font-weight: 800;
-  white-space: nowrap;
-  pointer-events: none;
-}
-
-.shifted-postponed .shift-mode-label {
-  background: rgba(234, 88, 12, .12);
-  color: #9a3412;
-}
-
 .node-label-top {
   position: absolute;
   bottom: calc(100% + 2px);
