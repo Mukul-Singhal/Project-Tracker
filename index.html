@@ -54,12 +54,10 @@
             <option>At Risk</option>
           </select>
         </div>
-        <div class="mh-fg">
-          <label>Node</label>
-          <select id="nodeTypeSelect">
-            <option value="square">■ Square</option>
-            <option value="circle">● Circle</option>
-          </select>
+        <div class="mh-fg stage-logo-field">
+          <label>Stage Logo</label>
+          <select id="nodeTypeSelect" class="stage-icon-value" aria-label="Stage logo"></select>
+          <div class="stage-icon-picker compact" id="nodeTypeSelectPicker"></div>
         </div>
         <div class="mh-tools">
           <button class="tbtn ghost sm" id="themeToggleBtn">🌙</button>
@@ -112,7 +110,7 @@
           <div class="tc-hdr">
             <span>EOP Table</span>
             <button class="tbtn accent sm" id="addEopRowBtn">+ Row</button>
-            <button class="tbtn accent sm" id="addEopColBtn">+ Col</button>
+            <button class="tbtn accent sm" id="addEopColBtn" hidden disabled>+ Col</button>
           </div>
           <div class="table-wrap" id="eopTableWrap"></div>
           <div class="remarks-wrap">
@@ -141,7 +139,8 @@
     </select>
     <input type="month" id="npDate" />
     <label class="popup-label" for="npShape">Stage Logo</label>
-    <select id="npShape"></select>
+    <select id="npShape" class="stage-icon-value" aria-label="Stage logo"></select>
+    <div class="stage-icon-picker" id="npShapePicker"></div>
     <label class="popup-label drs-check-label">
       <input type="checkbox" id="npIsDRS" /> Is DRS Available?
     </label>

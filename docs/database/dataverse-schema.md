@@ -20,10 +20,10 @@ Create these global choice columns first.
 - Branch Plan
 - Branch Actual
 
-### `pt_stageshape`
+### `pt_stagevisualkey`
 
-- Square
-- Circle
+- Configured stage logo ids from `STAGE_ICONS` in `app.js`
+- Legacy values: `square`, `circle`
 
 ### `pt_branchcontext`
 
@@ -167,7 +167,7 @@ Primary name column: `pt_name`
 | Month | `pt_month` | Date only | No | Store Plan months as first day of month if needed; Actual stages may use the exact actual date |
 | Month Text | `pt_monthtext` | Text | No | Plan example: `2024-06`; Actual stage payloads may contain `YYYY-MM-DD` |
 | Column Index | `pt_columnindex` | Whole number | Yes | Timeline grid column |
-| Shape | `pt_shape` | Choice `pt_stageshape` | No | Square/Circle |
+| Stage Visual Key | `pt_shape` | Choice/text-compatible key | No | Stored stage logo id from `STAGE_ICONS`; legacy `square`/`circle` values still render as fallbacks |
 | Top Label | `pt_toplabel` | Text | No | Example: DA |
 | Bottom Label | `pt_bottomlabel` | Text | No | Plan stages use `Beg`, `Mid`, or `End`; Actual stages leave this blank |
 | DRS Available | `pt_isdrs` | Yes/No | No | Whether DRS is available for this stage |

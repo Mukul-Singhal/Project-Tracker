@@ -6,7 +6,6 @@ const COL = 52, ROH = 90, YH = 34, MH = 30;
 const PDF_EXPORT_HORIZONTAL_SCALE = 0.8;
 const SHIFT_ARROW_ARCH = 46;
 const $ = id => document.getElementById(id);
-const NODE_SHAPES = [{ value: 'square', label: 'Square' }, { value: 'circle', label: 'Circle' }];
 const STORAGE_PREFIX = 'project-tracker';
 const ACTIVE_PROJECT_KEY = `${STORAGE_PREFIX}:activeProjectId`;
 
@@ -19,6 +18,227 @@ const fmtDate = d => {
 function cloneState(v) {
   return JSON.parse(JSON.stringify(v));
 }
+
+const STAGE_ICONS = [
+  {
+    id: 'stage-logo-1',
+    label: 'Stage Logo 1',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="4" y="4" width="37" height="37" rx="18.5" stroke="url(#paint0_linear_526_2297)" stroke-width="2"/>
+<path d="M35.6036 33.6936C36.3388 34.4287 36.0024 35.6841 34.9981 35.9532C34.5321 36.078 34.0348 35.9448 33.6936 35.6036L22.5 24.4083L11.3064 35.6036C10.5713 36.3388 9.31594 36.0024 9.04685 34.9981C8.92197 34.5321 9.05522 34.0348 9.39641 33.6936L20.5917 22.5L9.39641 11.3064C8.66124 10.5713 8.9976 9.31594 10.0019 9.04685C10.4679 8.92197 10.9652 9.05522 11.3064 9.39641L22.5 20.5917L33.6936 9.39641C34.4287 8.66124 35.6841 8.9976 35.9532 10.0019C36.078 10.4679 35.9448 10.9652 35.6036 11.3064L24.4083 22.5L35.6036 33.6936Z" fill="url(#paint1_linear_526_2297)"/>
+<defs>
+<linearGradient id="paint0_linear_526_2297" x1="-6.26733" y1="3.75685" x2="-5.20509" y2="48.128" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint1_linear_526_2297" x1="2.58416" y1="9.52397" x2="3.31955" y2="40.2425" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+</defs>
+</svg>`,
+  },
+  {
+    id: 'stage-logo-2',
+    label: 'Stage Logo 2',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="4" y="4" width="37" height="37" rx="18.5" stroke="url(#paint0_linear_526_2287)" stroke-width="2"/>
+<mask id="path-2-inside-1_526_2287" fill="white">
+<path d="M15 15H31V31H15V15Z"/>
+</mask>
+<path d="M31 15H33V13H31V15ZM31 31V33H33V31H31ZM15 15V17H31V15V13H15V15ZM31 15H29V31H31H33V15H31ZM31 31V29H15V31V33H31V31Z" fill="url(#paint1_linear_526_2287)" mask="url(#path-2-inside-1_526_2287)"/>
+<defs>
+<linearGradient id="paint0_linear_526_2287" x1="-6.26733" y1="3.75685" x2="-5.20509" y2="48.128" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint1_linear_526_2287" x1="11.198" y1="15.3105" x2="11.6338" y2="33.5141" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+</defs>
+</svg>`,
+  },
+  {
+    id: 'stage-logo-3',
+    label: 'Stage Logo 3',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="4" y="4" width="37" height="37" rx="18.5" stroke="url(#paint0_linear_527_2382)" stroke-width="2"/>
+<path d="M16 14H26.2667C26.819 14 27.2667 14.4477 27.2667 15V19.0198C27.2667 19.2647 27.1768 19.5011 27.0141 19.6842L16.8667 31.1L22.3432 25.4128C22.6834 25.0595 23.2298 25.0032 23.6189 25.3017C25.485 26.7333 28.3885 29.46 29 32" stroke="url(#paint1_linear_527_2382)" stroke-width="2"/>
+<defs>
+<linearGradient id="paint0_linear_527_2382" x1="-6.26733" y1="3.75685" x2="-5.20509" y2="48.128" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint1_linear_527_2382" x1="12.9109" y1="14.3493" x2="13.5894" y2="34.8176" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+</defs>
+</svg>`,
+  },
+  {
+    id: 'stage-logo-4',
+    label: 'Stage Logo 4',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_527_2305)">
+<path d="M33.2386 18H30.0682C29.8807 17.0881 29.5526 16.2869 29.0838 15.5966C28.6236 14.9062 28.0611 14.3267 27.3963 13.858C26.7401 13.3807 26.0114 13.0227 25.2102 12.7841C24.4091 12.5455 23.5739 12.4261 22.7045 12.4261C21.1193 12.4261 19.6832 12.8267 18.3963 13.6278C17.1179 14.429 16.0994 15.6094 15.3409 17.169C14.5909 18.7287 14.2159 20.642 14.2159 22.9091C14.2159 25.1761 14.5909 27.0895 15.3409 28.6491C16.0994 30.2088 17.1179 31.3892 18.3963 32.1903C19.6832 32.9915 21.1193 33.392 22.7045 33.392C23.5739 33.392 24.4091 33.2727 25.2102 33.0341C26.0114 32.7955 26.7401 32.4418 27.3963 31.973C28.0611 31.4957 28.6236 30.9119 29.0838 30.2216C29.5526 29.5227 29.8807 28.7216 30.0682 27.8182H33.2386C33 29.1562 32.5653 30.3537 31.9347 31.4105C31.304 32.4673 30.5199 33.3665 29.5824 34.108C28.6449 34.8409 27.5923 35.3991 26.4247 35.7827C25.2656 36.1662 24.0256 36.358 22.7045 36.358C20.4716 36.358 18.4858 35.8125 16.7472 34.7216C15.0085 33.6307 13.6406 32.0795 12.6435 30.0682C11.6463 28.0568 11.1477 25.6705 11.1477 22.9091C11.1477 20.1477 11.6463 17.7614 12.6435 15.75C13.6406 13.7386 15.0085 12.1875 16.7472 11.0966C18.4858 10.0057 20.4716 9.46023 22.7045 9.46023C24.0256 9.46023 25.2656 9.65199 26.4247 10.0355C27.5923 10.419 28.6449 10.9815 29.5824 11.723C30.5199 12.456 31.304 13.3509 31.9347 14.4077C32.5653 15.456 33 16.6534 33.2386 18Z" fill="url(#paint0_linear_527_2305)"/>
+</g>
+<rect x="4" y="4" width="37" height="37" rx="18.5" stroke="url(#paint1_linear_527_2305)" stroke-width="2"/>
+<defs>
+<linearGradient id="paint0_linear_527_2305" x1="2.58416" y1="1.85388" x2="4.53529" y2="51.8662" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint1_linear_527_2305" x1="-6.26733" y1="3.75685" x2="-5.20509" y2="48.128" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<clipPath id="clip0_527_2305">
+<rect x="3" y="3" width="39" height="39" rx="19.5" fill="white"/>
+</clipPath>
+</defs>
+</svg>`,
+  },
+  {
+    id: 'stage-logo-5',
+    label: 'Stage Logo 5',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="6" y="7" width="33" height="19" rx="1" stroke="url(#paint0_linear_527_2309)" stroke-width="2"/>
+<path d="M6 26C10.6406 19.963 23.7375 11.5112 39 26H6Z" fill="url(#paint1_linear_527_2309)"/>
+<path d="M30 8L30 17" stroke="#416AFD" stroke-width="2" stroke-linecap="round"/>
+<path d="M25 8L25 13" stroke="#416AFD" stroke-width="2" stroke-linecap="round"/>
+<path d="M14 14.6849V7.5C14 7.22386 14.2239 7 14.5 7H19.5C19.7761 7 20 7.22386 20 7.5V14.2834C20 14.7211 19.4774 14.9475 19.158 14.6482L17.3746 12.9762C17.1693 12.7837 16.8458 12.7985 16.6589 13.0087L14.8737 15.0171C14.5683 15.3607 14 15.1447 14 14.6849Z" fill="#416AFD"/>
+<path d="M30.2383 35.25H14.7617L22.5 26.5088L30.2383 35.25Z" stroke="#092C95" stroke-width="2"/>
+<defs>
+<linearGradient id="paint0_linear_527_2309" x1="-3.31683" y1="6.40753" x2="-2.97352" y2="30.3085" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint1_linear_527_2309" x1="-1.84158" y1="18.1553" x2="-1.78873" y2="27.2619" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+</defs>
+</svg>`,
+  },
+  {
+    id: 'stage-logo-6',
+    label: 'Stage Logo 6',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="6" y="7" width="33" height="19" rx="1" stroke="url(#paint0_linear_527_2330)" stroke-width="2"/>
+<path d="M30.2383 35.25H14.7617L22.5 26.5088L30.2383 35.25Z" stroke="#092C95" stroke-width="2"/>
+<defs>
+<linearGradient id="paint0_linear_527_2330" x1="-3.31683" y1="6.40753" x2="-2.97352" y2="30.3085" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+</defs>
+</svg>`,
+  },
+  {
+    id: 'stage-logo-7',
+    label: 'Stage Logo 7',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_527_2338)">
+<path d="M42.9521 40H3.04785L23 4.06055L42.9521 40Z" stroke="#092C95" stroke-width="2"/>
+<path d="M29.1074 31.25H16.8926L23 20.084L29.1074 31.25Z" stroke="#092C95" stroke-width="2"/>
+</g>
+<defs>
+<clipPath id="clip0_527_2338">
+<rect width="45" height="45" fill="white"/>
+</clipPath>
+</defs>
+</svg>`,
+  },
+  {
+    id: 'stage-logo-8',
+    label: 'Stage Logo 8',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="6" y="10" width="33" height="25" rx="1" stroke="url(#paint0_linear_527_2346)" stroke-width="2"/>
+<rect x="15" y="17" width="16" height="12" rx="1" stroke="url(#paint1_linear_527_2346)" stroke-width="2"/>
+<defs>
+<linearGradient id="paint0_linear_527_2346" x1="-3.31683" y1="9.52397" x2="-2.7494" y2="40.2496" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint1_linear_527_2346" x1="9.72277" y1="16.2717" x2="10.0194" y2="32.2034" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+</defs>
+</svg>`,
+  },
+  {
+    id: 'stage-logo-9',
+    label: 'Stage Logo 9',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_527_2360)">
+<rect x="3.85" y="3.85" width="29.3" height="29.3" rx="14.65" stroke="url(#paint0_linear_527_2360)" stroke-width="1.7"/>
+<rect x="7.85" y="7.85" width="21.3" height="21.3" rx="10.65" stroke="url(#paint1_linear_527_2360)" stroke-width="1.7"/>
+<rect x="12.85" y="12.85" width="11.3" height="11.3" rx="5.65" stroke="url(#paint2_linear_527_2360)" stroke-width="1.7"/>
+<path d="M32.0256 44V27.2727H37.6776C38.9898 27.2727 40.0625 27.5096 40.8956 27.9833C41.7341 28.4516 42.3549 29.0859 42.7578 29.8864C43.1607 30.6868 43.3622 31.5798 43.3622 32.5653C43.3622 33.5509 43.1607 34.4466 42.7578 35.2525C42.3603 36.0584 41.745 36.7009 40.9119 37.18C40.0788 37.6538 39.0116 37.8906 37.7102 37.8906H33.6591V36.0938H37.6449C38.5433 36.0938 39.2648 35.9386 39.8093 35.6282C40.3538 35.3178 40.7486 34.8986 40.9936 34.3704C41.2441 33.8368 41.3693 33.2351 41.3693 32.5653C41.3693 31.8956 41.2441 31.2966 40.9936 30.7685C40.7486 30.2403 40.3511 29.8265 39.8011 29.527C39.2512 29.2221 38.5215 29.0696 37.6122 29.0696H34.0511V44H32.0256Z" fill="url(#paint3_linear_527_2360)"/>
+</g>
+<defs>
+<linearGradient id="paint0_linear_527_2360" x1="-4.36634" y1="3.6016" x2="-3.522" y2="38.871" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint1_linear_527_2360" x1="1.53465" y1="7.44635" x2="2.1611" y2="33.614" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint2_linear_527_2360" x1="8.91089" y1="12.2523" x2="9.26497" y2="27.0427" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint3_linear_527_2360" x1="26.4356" y1="22.5434" x2="27.8572" y2="54.3543" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<clipPath id="clip0_527_2360">
+<rect width="45" height="45" fill="white"/>
+</clipPath>
+</defs>
+</svg>`,
+  },
+  {
+    id: 'stage-logo-10',
+    label: 'Stage Logo 10',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="4" y="4" width="37" height="37" rx="18.5" stroke="url(#paint0_linear_526_2290)" stroke-width="2"/>
+<path d="M16 14H26.2667C26.819 14 27.2667 14.4477 27.2667 15V19.0198C27.2667 19.2647 27.1768 19.5011 27.0141 19.6842L16.8667 31.1L22.3432 25.4128C22.6834 25.0595 23.2298 25.0032 23.6189 25.3017C25.485 26.7333 28.3885 29.46 29 32" stroke="url(#paint1_linear_526_2290)" stroke-width="2"/>
+<defs>
+<linearGradient id="paint0_linear_526_2290" x1="-6.26733" y1="3.75685" x2="-5.20509" y2="48.128" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint1_linear_526_2290" x1="12.9109" y1="14.3493" x2="13.5894" y2="34.8176" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+</defs>
+</svg>`,
+  },
+  {
+    id: 'stage-logo-11',
+    label: 'Stage Logo 11',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="4" y="4" width="37" height="37" rx="18.5" stroke="url(#paint0_linear_527_2378)" stroke-width="2"/>
+<path d="M16 14H26.2667C26.819 14 27.2667 14.4477 27.2667 15V19.0198C27.2667 19.2647 27.1768 19.5011 27.0141 19.6842L16.8667 31.1L22.3432 25.4128C22.6834 25.0595 23.2298 25.0032 23.6189 25.3017C25.485 26.7333 28.3885 29.46 29 32" stroke="url(#paint1_linear_527_2378)" stroke-width="2"/>
+<defs>
+<linearGradient id="paint0_linear_527_2378" x1="-6.26733" y1="3.75685" x2="-5.20509" y2="48.128" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint1_linear_527_2378" x1="12.9109" y1="14.3493" x2="13.5894" y2="34.8176" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+</defs>
+</svg>`,
+  },
+];
 
 const PLAN_BOTTOM_LABELS = ['Beg', 'Mid', 'End'];
 
@@ -49,6 +269,44 @@ function escapeHtml(value) {
     '"': '&quot;',
     "'": '&#39;',
   }[ch]));
+}
+
+function getDefaultStageIconId() {
+  return (STAGE_ICONS[0] && STAGE_ICONS[0].id) || 'square';
+}
+
+function getStageIcon(iconId) {
+  const id = String(iconId || '').trim();
+  return STAGE_ICONS.find(icon => icon.id === id) || null;
+}
+
+function isLegacyStageIconId(iconId) {
+  return iconId === 'square' || iconId === 'circle';
+}
+
+function normalizeStageIconId(iconId) {
+  const id = String(iconId || '').trim();
+  if (isLegacyStageIconId(id)) return id;
+  return getStageIcon(id) ? id : getDefaultStageIconId();
+}
+
+function makeStageIconSvg(icon, instanceId) {
+  if (!icon || !icon.svg) return '';
+  const suffix = String(instanceId || icon.id).replace(/[^a-zA-Z0-9_-]/g, '-');
+  return icon.svg
+    .replace(/\sid="([^"]+)"/g, (_, id) => ` id="${id}-${suffix}"`)
+    .replace(/url\(#([^)]+)\)/g, (_, id) => `url(#${id}-${suffix})`);
+}
+
+function getStageVisualMarkup(iconId, instanceId = 'stage-node') {
+  const id = normalizeStageIconId(iconId);
+  const icon = getStageIcon(id);
+  if (icon) {
+    return `<div class="node-shape stage-icon-node" data-stage-icon="${escapeHtml(id)}" aria-label="${escapeHtml(icon.label)}">${makeStageIconSvg(icon, instanceId)}</div>`;
+  }
+  const legacy = id === 'circle' ? 'circle' : 'square';
+  const label = legacy === 'circle' ? 'Legacy Circle' : 'Legacy Square';
+  return `<div class="node-shape legacy-node-shape ${legacy}" data-stage-icon="${legacy}" aria-label="${label}"></div>`;
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -425,6 +683,107 @@ function colToInputDate(col, state) {
   return month ? `${month}-01` : '';
 }
 
+function getInputDateFromToday(today = new Date()) {
+  const d = today instanceof Date ? today : new Date(today);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function getNextMonthInputMonth(today = new Date()) {
+  const d = today instanceof Date ? today : new Date(today);
+  if (Number.isNaN(d.getTime())) return '';
+  const monthIndex = d.getMonth() + 1;
+  const year = d.getFullYear() + (monthIndex > 11 ? 1 : 0);
+  const month = (monthIndex % 12) + 1;
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+function isActualDateInFuture(value, today = new Date()) {
+  if (!isFullActualDate(value)) return false;
+  const todayValue = getInputDateFromToday(today);
+  return !!todayValue && String(value).trim() > todayValue;
+}
+
+function getFutureActualBlankSpaceCol(state, today = new Date()) {
+  const month = getNextMonthInputMonth(today);
+  const visibleCol = dateToCol(month, state);
+  if (visibleCol >= 0) return visibleCol;
+  if (!month || !state.years.length) return 0;
+  const [year, monthValue] = month.split('-').map(Number);
+  return Math.max(0, (year - Number(state.years[0])) * 12 + monthValue - 1);
+}
+
+function getFutureActualBlankSpacePoint(state, today = new Date(), yOffset = 18) {
+  const col = getFutureActualBlankSpaceCol(state, today);
+  return {
+    x: col * COL + COL / 2,
+    y: getTopOffset(state) + getPlannedH(state) + 4 + ROH / 2 + yOffset,
+  };
+}
+
+function needsFutureActualBlankSpace(state) {
+  if (state.remarks || state.milestoneTableVisible) return true;
+  const nodeHasDrs = node => node && node.isDRS && String(node.drsDetail || '').trim();
+  return [
+    ...(state.planNodes || []),
+    ...(state.branchNodes || []),
+    ...(state.actualNodes || []),
+    ...(state.actualBranchNodes || []),
+  ].some(nodeHasDrs) || (state.stageShifts || []).some(shift => String(shift.drsDetail || '').trim());
+}
+
+function ensureFutureActualBlankSpaceVisible(state) {
+  if (!needsFutureActualBlankSpace(state)) return state;
+  const month = getNextMonthInputMonth();
+  if (!month || dateToCol(month, state) >= 0) return state;
+  const liveState = store.getState();
+  if (liveState && typeof liveState.ensureYearVisible === 'function') {
+    liveState.ensureYearVisible(`${month}-01`);
+    return store.getState();
+  }
+  return state;
+}
+
+function getStageSlotRatio(node, rType) {
+  if (!isPlanStageContext(rType)) return 0.5;
+  const label = normalizePlanBottomLabel(node && node.bottomLabel);
+  if (label === 'Beg') return 0.25;
+  if (label === 'End') return 0.75;
+  return 0.5;
+}
+
+function getStageCollectionForContext(state, rType) {
+  if (rType === 'plan') return state.planNodes || [];
+  if (rType === 'branch') return state.branchNodes || [];
+  if (rType === 'actual') return state.actualNodes || [];
+  if (rType === 'actualBranch') return state.actualBranchNodes || [];
+  return [];
+}
+
+function getStageRowKey(node, rType) {
+  return rType === 'plan' || rType === 'actual' ? node.variantId : node.branchId;
+}
+
+function getStageVisualX(node, rType, state) {
+  if (!node || !Number.isFinite(node.col)) return 0;
+  const ratio = getStageSlotRatio(node, rType);
+  const rowKey = getStageRowKey(node, rType);
+  const group = getStageCollectionForContext(state, rType)
+    .filter(n =>
+      n.col === node.col &&
+      getStageRowKey(n, rType) === rowKey &&
+      getStageSlotRatio(n, rType) === ratio
+    )
+    .sort((a, b) => String(a.id || '').localeCompare(String(b.id || '')));
+  const index = Math.max(0, group.findIndex(n => n.id === node.id));
+  const gap = 6;
+  const maxOffset = Math.max(0, (group.length - 1) / 2 * gap);
+  const minX = node.col * COL + 14;
+  const maxX = (node.col + 1) * COL - 14;
+  const baseX = Math.min(maxX - maxOffset, Math.max(minX + maxOffset, node.col * COL + COL * ratio));
+  return Math.min(maxX, Math.max(minX, baseX + (index - (group.length - 1) / 2) * gap));
+}
+
 function isPlanStageContext(rType) {
   return rType === 'plan' || rType === 'branch';
 }
@@ -447,6 +806,9 @@ function prepareStageNodeData(state, rType, currentCol, data, existing) {
   if (isActualStageContext(rType) && !isFullActualDate(date)) {
     return { ok: false, reason: 'Enter the actual date.' };
   }
+  if (isActualStageContext(rType) && isActualDateInFuture(date)) {
+    return { ok: false, reason: 'Actual date cannot be in the future.' };
+  }
   if (date && isPlanStageContext(rType) && !/^\d{4}-\d{2}$/.test(date)) {
     return { ok: false, reason: 'Select a valid month.' };
   }
@@ -463,7 +825,7 @@ function prepareStageNodeData(state, rType, currentCol, data, existing) {
     reason: '',
     node: {
       col,
-      type: data.type || (existing && existing.type) || 'square',
+      type: normalizeStageIconId(data.type || (existing && existing.type)),
       topLabel: String(data.topLabel || '').trim(),
       bottomLabel: isPlanStageContext(rType) ? normalizePlanBottomLabel(data.bottomLabel) : '',
       date,
@@ -579,19 +941,22 @@ function normalizeMonthInput(raw) {
   return '';
 }
 
-function parseEopItems(state) {
+function parseEopItems(state, today = new Date()) {
   const table = state.rightTable || { cols: [], rows: [] };
   const dateCols = (table.cols || [])
     .map((col, index) => (/date|month/i.test(col || '') ? index : -1))
     .filter(index => index >= 0);
   const cols = dateCols.length ? dateCols : [1];
+  const inferredDate = getNextMonthInputMonth(today);
   const items = [];
 
   (table.rows || []).forEach((row, rowIndex) => {
     const label = String((row && row[0]) || '').trim();
+    let hasDatedItem = false;
     cols.forEach(colIndex => {
       const date = normalizeMonthInput(row && row[colIndex]);
       if (!date) return;
+      hasDatedItem = true;
       items.push({
         id: `eop-${rowIndex}-${colIndex}`,
         label,
@@ -601,6 +966,16 @@ function parseEopItems(state) {
         colIndex,
       });
     });
+    if (!hasDatedItem && label && inferredDate) {
+      items.push({
+        id: `eop-${rowIndex}-inferred`,
+        label,
+        date: inferredDate,
+        col: dateToCol(inferredDate, state),
+        rowIndex,
+        colIndex: cols[0] ?? 1,
+      });
+    }
   });
 
   return items.sort((a, b) => a.col - b.col || a.rowIndex - b.rowIndex || a.colIndex - b.colIndex);
@@ -891,7 +1266,7 @@ function copyStageForActual(node, id, contextKey) {
     id,
     sourcePlanNodeId: node.id,
     col: node.col,
-    type: node.type || 'square',
+    type: normalizeStageIconId(node.type),
     topLabel: node.topLabel || '',
     bottomLabel: node.bottomLabel || '',
     date: node.date || '',
@@ -1073,16 +1448,17 @@ function syncHeaderInputsFromState() {
 }
 
 function loadSample() {
+  const stageLogo = getDefaultStageIconId();
   store.getState().replaceState({
     variants: [{ id: 'v1', name: 'DOM Gas' }, { id: 'v2', name: 'DOM CNG' }],
     nid: 50,
     planNodes: [
-      { id: 'p1', variantId: 'v1', col: 5, type: 'square', topLabel: 'DA', bottomLabel: '', date: '2024-06', isDRS: false, drsDetail: '' },
-      { id: 'p2', variantId: 'v1', col: 9, type: 'square', topLabel: 'SOS', bottomLabel: '', date: '2024-10', isDRS: false, drsDetail: '' },
-      { id: 'p3', variantId: 'v2', col: 6, type: 'square', topLabel: 'DA', bottomLabel: '', date: '2024-07', isDRS: false, drsDetail: '' },
+      { id: 'p1', variantId: 'v1', col: 5, type: stageLogo, topLabel: 'DA', bottomLabel: '', date: '2024-06', isDRS: false, drsDetail: '' },
+      { id: 'p2', variantId: 'v1', col: 9, type: stageLogo, topLabel: 'SOS', bottomLabel: '', date: '2024-10', isDRS: false, drsDetail: '' },
+      { id: 'p3', variantId: 'v2', col: 6, type: stageLogo, topLabel: 'DA', bottomLabel: '', date: '2024-07', isDRS: false, drsDetail: '' },
     ],
     actualNodes: [
-      { id: 'a1', variantId: 'v1', col: 6, type: 'square', topLabel: '', bottomLabel: '', date: '2024-07', isDRS: false, drsDetail: '' },
+      { id: 'a1', variantId: 'v1', col: 6, type: stageLogo, topLabel: '', bottomLabel: '', date: '2024-07', isDRS: false, drsDetail: '' },
     ],
   });
 }
@@ -1151,7 +1527,7 @@ function mapStages(nodes, context, extra) {
     stage_context: context,
     month: node.date || '',
     column_index: Number.isFinite(node.col) ? node.col : 0,
-    shape: node.type || 'square',
+    shape: normalizeStageIconId(node.type),
     top_label: node.topLabel || '',
     bottom_label: node.bottomLabel || '',
     is_drs: !!node.isDRS,
@@ -1290,7 +1666,8 @@ const modalBody = $('modalBody');
 const modalTitle = $('modalTitle');
 
 function renderAll() {
-  const s = store.getState();
+  let s = store.getState();
+  s = ensureFutureActualBlankSpaceVisible(s);
   renderHeaders(s);
   renderSidebar(s);
   renderGrid(s);
@@ -1476,6 +1853,12 @@ function makeBranchSubRow(tc, branchId, rType, label, state) {
   }
   const pill = document.createElement('div');
   pill.className = 'branch-div-pill' + (rType === 'actualBranch' ? ' actual-branch-pill' : '');
+  const sourceCol = getBranchStartCol(state, rType, branchId);
+  if (sourceCol != null) {
+    const sourceX = sourceCol * COL + COL / 2;
+    const leftOfLine = sourceX - 112;
+    pill.style.left = `${leftOfLine >= 4 ? leftOfLine : sourceX + 10}px`;
+  }
   const pillText = document.createElement('span');
   pillText.textContent = '↳ ' + (label || 'Branch');
   pill.appendChild(pillText);
@@ -1512,7 +1895,7 @@ function drawLines(grp, state) {
     const pn = state.planNodes.filter(n => n.variantId === vr.id).sort((a, b) => a.col - b.col);
     const y = getTopOffset(state) + laneIdx * ROH + ROH / 2;
     for (let i = 0; i < pn.length - 1; i++)
-      mkLine(grp, pn[i].col * COL + COL / 2, y, pn[i + 1].col * COL + COL / 2, y, '#2563eb');
+      mkLine(grp, getStageVisualX(pn[i], 'plan', state), y, getStageVisualX(pn[i + 1], 'plan', state), y, '#2563eb');
     const lastPlan = pn[pn.length - 1];
     if (lastPlan) {
       const branchIds = new Set(state.branches.filter(b => b.variantId === vr.id).map(b => b.id));
@@ -1521,7 +1904,7 @@ function drawLines(grp, state) {
         .map(link => getMergeTargetCol(link, state))
         .filter(col => Number.isFinite(col)));
       if (maxMergeCol > lastPlan.col) {
-        mkLine(grp, lastPlan.col * COL + COL / 2, y, maxMergeCol * COL + COL / 2, y, '#2563eb');
+        mkLine(grp, getStageVisualX(lastPlan, 'plan', state), y, maxMergeCol * COL + COL / 2, y, '#2563eb');
       }
     }
   });
@@ -1532,7 +1915,7 @@ function drawLines(grp, state) {
     const bY = getTopOffset(state) + laneIdx * ROH + ROH / 2;
     const bn = state.branchNodes.filter(n => n.branchId === br.id).sort((a, b) => a.col - b.col);
     for (let i = 0; i < bn.length - 1; i++)
-      mkLine(grp, bn[i].col * COL + COL / 2, bY, bn[i + 1].col * COL + COL / 2, bY, '#00c9b1');
+      mkLine(grp, getStageVisualX(bn[i], 'branch', state), bY, getStageVisualX(bn[i + 1], 'branch', state), bY, '#00c9b1');
   });
 
   state.variants.forEach(vr => {
@@ -1541,7 +1924,7 @@ function drawLines(grp, state) {
     const an = state.actualNodes.filter(n => n.variantId === vr.id).sort((a, b) => a.col - b.col);
     const y = getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2;
     for (let i = 0; i < an.length - 1; i++)
-      mkLine(grp, an[i].col * COL + COL / 2, y, an[i + 1].col * COL + COL / 2, y, '#f97316');
+      mkLine(grp, getStageVisualX(an[i], 'actual', state), y, getStageVisualX(an[i + 1], 'actual', state), y, '#f97316');
     const lastActual = an[an.length - 1];
     if (lastActual) {
       const branchIds = new Set((state.actualBranches || []).filter(b => b.variantId === vr.id).map(b => b.id));
@@ -1550,7 +1933,7 @@ function drawLines(grp, state) {
         .map(link => getMergeTargetCol(link, state))
         .filter(col => Number.isFinite(col)));
       if (maxMergeCol > lastActual.col) {
-        mkLine(grp, lastActual.col * COL + COL / 2, y, maxMergeCol * COL + COL / 2, y, '#f97316');
+        mkLine(grp, getStageVisualX(lastActual, 'actual', state), y, maxMergeCol * COL + COL / 2, y, '#f97316');
       }
     }
   });
@@ -1561,7 +1944,7 @@ function drawLines(grp, state) {
     const y = getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2;
     const nodes = state.actualBranchNodes.filter(n => n.branchId === br.id).sort((a, b) => a.col - b.col);
     for (let i = 0; i < nodes.length - 1; i++)
-      mkLine(grp, nodes[i].col * COL + COL / 2, y, nodes[i + 1].col * COL + COL / 2, y, '#f97316');
+      mkLine(grp, getStageVisualX(nodes[i], 'actualBranch', state), y, getStageVisualX(nodes[i + 1], 'actualBranch', state), y, '#f97316');
   });
 
   drawRelationshipArrows(grp, state);
@@ -1729,25 +2112,25 @@ function getFirstActualBranchNode(branchId, state) {
 function getPlanNodeCenter(node, state) {
   const laneIdx = findPlanLaneIndex(state, 'plan', node.variantId);
   if (laneIdx < 0) return null;
-  return { x: node.col * COL + COL / 2, y: getTopOffset(state) + laneIdx * ROH + ROH / 2 };
+  return { x: getStageVisualX(node, 'plan', state), y: getTopOffset(state) + laneIdx * ROH + ROH / 2 };
 }
 
 function getBranchNodeCenter(node, state) {
   const laneIdx = findPlanLaneIndex(state, 'branch', node.branchId);
   if (laneIdx < 0) return null;
-  return { x: node.col * COL + COL / 2, y: getTopOffset(state) + laneIdx * ROH + ROH / 2 };
+  return { x: getStageVisualX(node, 'branch', state), y: getTopOffset(state) + laneIdx * ROH + ROH / 2 };
 }
 
 function getActualNodeCenter(node, state) {
   const laneIdx = findActualLaneIndex(state, 'actual', node.variantId);
   if (laneIdx < 0) return null;
-  return { x: node.col * COL + COL / 2, y: getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2 };
+  return { x: getStageVisualX(node, 'actual', state), y: getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2 };
 }
 
 function getActualBranchNodeCenter(node, state) {
   const laneIdx = findActualLaneIndex(state, 'branch', node.branchId);
   if (laneIdx < 0) return null;
-  return { x: node.col * COL + COL / 2, y: getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2 };
+  return { x: getStageVisualX(node, 'actualBranch', state), y: getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2 };
 }
 
 function findStageByContext(state, context, nodeId) {
@@ -1771,7 +2154,7 @@ function getStageCenterByContext(node, context, state) {
 function getStageShiftTargetCenter(shift, source, state) {
   const from = getStageCenterByContext(source, shift.sourceContext, state);
   if (!from || !Number.isFinite(shift.targetCol)) return null;
-  return { x: shift.targetCol * COL + COL / 2, y: from.y };
+  return { x: getStageVisualX({ ...source, id: shift.id, col: shift.targetCol }, shift.sourceContext, state), y: from.y };
 }
 
 function renderNodes(state) {
@@ -1784,40 +2167,44 @@ function renderNodes(state) {
     const laneIdx = findPlanLaneIndex(state, 'plan', n.variantId);
     if (laneIdx < 0) return;
     const y = getTopOffset(state) + laneIdx * ROH + ROH / 2;
+    const x = getStageVisualX(n, 'plan', state);
     const el = mkNode(n, 'plan', shiftedNodeIds.has(n.id));
-    el.style.cssText = `left:${n.col * COL + COL / 2 - 14}px;top:${y - 14}px`;
+    el.style.cssText = `left:${x - 14}px;top:${y - 14}px`;
     grp.appendChild(el);
-    addDrsDetailLabel(grp, n, n.col * COL + COL / 2, y, state);
+    addDrsDetailLabel(grp, n, x, y, state);
   });
 
   state.branchNodes.forEach(n => {
     const laneIdx = findPlanLaneIndex(state, 'branch', n.branchId);
     if (laneIdx < 0) return;
     const y = getTopOffset(state) + laneIdx * ROH + ROH / 2;
+    const x = getStageVisualX(n, 'branch', state);
     const el = mkNode(n, 'branch', shiftedNodeIds.has(n.id));
-    el.style.cssText = `left:${n.col * COL + COL / 2 - 14}px;top:${y - 14}px`;
+    el.style.cssText = `left:${x - 14}px;top:${y - 14}px`;
     grp.appendChild(el);
-    addDrsDetailLabel(grp, n, n.col * COL + COL / 2, y, state);
+    addDrsDetailLabel(grp, n, x, y, state);
   });
 
   state.actualNodes.forEach(n => {
     const laneIdx = findActualLaneIndex(state, 'actual', n.variantId);
     if (laneIdx < 0) return;
     const y = getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2;
+    const x = getStageVisualX(n, 'actual', state);
     const el = mkNode(n, 'actual', shiftedNodeIds.has(n.id));
-    el.style.cssText = `left:${n.col * COL + COL / 2 - 14}px;top:${y - 14}px`;
+    el.style.cssText = `left:${x - 14}px;top:${y - 14}px`;
     grp.appendChild(el);
-    addDrsDetailLabel(grp, n, n.col * COL + COL / 2, y, state);
+    addDrsDetailLabel(grp, n, x, y, state);
   });
 
   state.actualBranchNodes.forEach(n => {
     const laneIdx = findActualLaneIndex(state, 'branch', n.branchId);
     if (laneIdx < 0) return;
     const y = getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2;
+    const x = getStageVisualX(n, 'actualBranch', state);
     const el = mkNode(n, 'actualBranch', shiftedNodeIds.has(n.id));
-    el.style.cssText = `left:${n.col * COL + COL / 2 - 14}px;top:${y - 14}px`;
+    el.style.cssText = `left:${x - 14}px;top:${y - 14}px`;
     grp.appendChild(el);
-    addDrsDetailLabel(grp, n, n.col * COL + COL / 2, y, state);
+    addDrsDetailLabel(grp, n, x, y, state);
   });
 
   renderStageShiftNodes(grp, state);
@@ -1832,10 +2219,8 @@ function addDrsDetailLabel(grp, node, x, y, state) {
   el.dataset.labelKey = `drs:${node.id}`;
   el.title = text;
   el.textContent = text;
-  const labelWidth = 240;
-  const gridW = totalCols(state) * COL;
-  const rightFits = x + 22 + labelWidth < gridW;
-  const defaultPos = { x: rightFits ? x + 22 : Math.max(4, x - labelWidth - 22), y: y + 12 };
+  const futurePoint = getFutureActualBlankSpacePoint(state, new Date(), 18);
+  const defaultPos = { x: Math.max(4, futurePoint.x), y: futurePoint.y };
   const pos = state.labelPositions[`drs:${node.id}`] || defaultPos;
   el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
   el.addEventListener('mousedown', startDrsLabelDrag);
@@ -1852,10 +2237,9 @@ function mkNode(n, rType, hasShift) {
   if (n.branchId) el.dataset.branchId = n.branchId;
 
   const dh = isActualStageContext(rType) && n.date ? `<span class="node-date">${fmtActualDate(n.date)}</span>` : '';
-  const shape = n.type === 'circle' ? 'circle' : 'square';
   el.innerHTML = `
     <span class="node-label-top">${escapeHtml(n.topLabel || '')}</span>
-    <div class="node-shape ${shape}"></div>
+    ${getStageVisualMarkup(n.type, `node-${n.id}`)}
     <span class="node-label-bottom">${escapeHtml(n.bottomLabel || '')}</span>
     ${dh}${hasShift ? '<span class="node-shift-cross">×</span>' : ''}<button class="node-del">✕</button>`;
 
@@ -1898,10 +2282,8 @@ function addShiftDrsDetailLabel(grp, shift, x, y, state) {
   el.dataset.labelKey = `shift-drs:${shift.id}`;
   el.title = text;
   el.textContent = text;
-  const labelWidth = 240;
-  const gridW = totalCols(state) * COL;
-  const rightFits = x + 28 + labelWidth < gridW;
-  const defaultPos = { x: rightFits ? x + 28 : Math.max(4, x - labelWidth - 28), y: Math.max(4, y - 38) };
+  const futurePoint = getFutureActualBlankSpacePoint(state, new Date(), -22);
+  const defaultPos = { x: Math.max(4, futurePoint.x), y: Math.max(4, futurePoint.y) };
   const pos = state.labelPositions[`shift-drs:${shift.id}`] || defaultPos;
   el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
   el.addEventListener('mousedown', startDrsLabelDrag);
@@ -1910,13 +2292,12 @@ function addShiftDrsDetailLabel(grp, shift, x, y, state) {
 
 function mkShiftedNode(source, shift) {
   const el = document.createElement('div');
-  const shape = source.type === 'circle' ? 'circle' : 'square';
   el.className = `node shifted-node shifted-${shift.mode}`;
   el.dataset.sourceNodeId = shift.sourceNodeId;
   el.dataset.shiftId = shift.id;
   el.innerHTML = `
     <span class="node-label-top">${escapeHtml(source.topLabel || '')}</span>
-    <div class="node-shape ${shape}"></div>
+    ${getStageVisualMarkup(source.type, `shift-${shift.id}`)}
     <span class="node-label-bottom">${escapeHtml(source.bottomLabel || '')}</span>
     ${shift.targetDate ? `<span class="node-date">${fmtDate(shift.targetDate)}</span>` : ''}`;
   return el;
@@ -1935,10 +2316,12 @@ function renderBottomTables(state) {
     updateColName: (ci, name) => { store.getState().updateRightTableColName(ci, name); scheduleDraftSave(); },
     deleteCol: (ci) => { store.getState().deleteRightTableCol(ci); renderBottomTables(); persistDraftNow(); },
     deleteRow: (ri) => { store.getState().deleteRightTableRow(ri); renderBottomTables(); persistDraftNow(); },
-  });
+  }, { allowColumnEdit: false, allowColumnDelete: false });
 }
 
-function renderDynTable(wrapId, tbl, cbs) {
+function renderDynTable(wrapId, tbl, cbs, options = {}) {
+  const allowColumnEdit = options.allowColumnEdit !== false;
+  const allowColumnDelete = options.allowColumnDelete !== false;
   const wrap = $(wrapId);
   wrap.innerHTML = '';
   const table = document.createElement('table');
@@ -1950,12 +2333,14 @@ function renderDynTable(wrapId, tbl, cbs) {
     const th = document.createElement('th');
     th.className = 'dyn-th';
     const sp = document.createElement('span');
-    sp.contentEditable = 'true';
-    sp.className = 'th-name';
+    sp.contentEditable = allowColumnEdit ? 'true' : 'false';
+    sp.className = 'th-name' + (allowColumnEdit ? '' : ' readonly');
     sp.textContent = col;
-    sp.addEventListener('blur', () => cbs.updateColName(ci, sp.textContent.trim()));
+    if (allowColumnEdit) {
+      sp.addEventListener('blur', () => cbs.updateColName(ci, sp.textContent.trim()));
+    }
     th.appendChild(sp);
-    if (ci > 0) {
+    if (allowColumnDelete && ci > 0) {
       const dx = document.createElement('button');
       dx.className = 'col-del';
       dx.textContent = '×';
@@ -2047,8 +2432,8 @@ function renderCanvasRemarks(state) {
   if (!state.remarks) return;
   const el = document.createElement('div');
   el.className = 'canvas-remark';
-  const defaultY = getTopOffset(state) + getPlannedH(state) + 4 + ROH / 2 + 18;
-  const pos = state.remarkPosition || { x: 120, y: defaultY };
+  const defaultPos = getFutureActualBlankSpacePoint(state, new Date(), 18);
+  const pos = state.remarkPosition || defaultPos;
   el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
   el.textContent = state.remarks;
   el.addEventListener('mousedown', startRemarkDrag);
@@ -2064,7 +2449,7 @@ function renderMilestoneTableOverlay(state) {
   const el = document.createElement('div');
   el.className = 'milestone-grid-table';
   el.dataset.labelKey = 'milestone:table';
-  const defaultPos = { x: 132, y: getTopOffset(state) + 14 };
+  const defaultPos = getFutureActualBlankSpacePoint(state, new Date(), 44);
   const pos = state.labelPositions['milestone:table'] || defaultPos;
   el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
 
@@ -2293,7 +2678,7 @@ function bindHeader() {
 
   $('remarksBox').addEventListener('input', () => {
     store.getState().setRemarks($('remarksBox').textContent.trim());
-    renderCanvasRemarks(store.getState());
+    renderAll();
     scheduleDraftSave();
   });
 }
@@ -2328,7 +2713,7 @@ function onCellClick(e) {
   $('npTop').value = '';
   $('npBottom').value = '';
   $('npDate').value = isActualStageContext(rType) ? colToInputDate(col, state) : colToInputMonth(col, state);
-  $('npShape').value = $('nodeTypeSelect').value;
+  setStageIconSelectValue($('npShape'), $('nodeTypeSelect').value);
   $('npIsDRS').checked = false;
   $('npDrsDetail').style.display = 'none';
   $('npDrsDetail').value = '';
@@ -2357,7 +2742,7 @@ $('npConfirm').addEventListener('click', () => {
   const date = $('npDate').value;
   if (date) a.ensureYearVisible(date);
   const prepared = createStageNodeData(store.getState(), rType, col, {
-    type: $('npShape').value,
+    type: normalizeStageIconId($('npShape').value),
     topLabel: $('npTop').value.trim(),
     bottomLabel: $('npBottom').value,
     date,
@@ -2376,8 +2761,7 @@ $('npConfirm').addEventListener('click', () => {
 
   nodePopup.classList.remove('active');
   pendCell = null;
-  const s = store.getState();
-  renderGrid(s); renderNodes(s); persistDraftNow();
+  renderAll(); persistDraftNow();
 });
 
 $('npCancel').addEventListener('click', () => {
@@ -2674,7 +3058,9 @@ window.deleteVariant = (id) => {
 $('addMsRowBtn').addEventListener('click', () => { store.getState().addLeftTableRow(); renderBottomTables(); persistDraftNow(); });
 $('addMsColBtn').addEventListener('click', () => { store.getState().addLeftTableCol(); renderBottomTables(); persistDraftNow(); });
 $('addEopRowBtn').addEventListener('click', () => { store.getState().addRightTableRow(); renderBottomTables(); persistDraftNow(); });
-$('addEopColBtn').addEventListener('click', () => { store.getState().addRightTableCol(); renderBottomTables(); persistDraftNow(); });
+const addEopColBtn = $('addEopColBtn');
+addEopColBtn.hidden = true;
+addEopColBtn.disabled = true;
 
 $('copyActualBtn').addEventListener('click', () => {
   store.getState().copyPlanToActual();
@@ -2913,7 +3299,7 @@ $('submitBtn').addEventListener('click', async () => {
   }
   const parsedEopItems = parseEopItems(state);
   if (!parsedEopItems.length) {
-    alert('Enter at least one EOP date in a Date/Month column as YYYY-MM (use the month picker).');
+    alert('Enter at least one EOP detail or EOP date.');
     return;
   }
   parsedEopItems.forEach(item => store.getState().ensureYearVisible(item.date));
@@ -3023,9 +3409,52 @@ $('modalCancel').addEventListener('click', closeModal);
 $('modalClose').addEventListener('click', closeModal);
 $('modalOverlay').addEventListener('click', e => { if (e.target === $('modalOverlay')) closeModal(); });
 
-// ── Shape select helper ──
-function fillShapeSelect(selectEl) {
-  selectEl.innerHTML = NODE_SHAPES.map(s => `<option value="${s.value}">${s.label}</option>`).join('');
+// ── Stage logo picker helper ──
+function normalizeStagePickerIconId(iconId) {
+  const icon = getStageIcon(iconId);
+  return icon ? icon.id : getDefaultStageIconId();
+}
+
+function getStageIconPickerForSelect(selectEl) {
+  if (!selectEl) return null;
+  return $(`${selectEl.id}Picker`);
+}
+
+function setStageIconSelectValue(selectEl, iconId) {
+  if (!selectEl) return;
+  selectEl.value = normalizeStagePickerIconId(iconId);
+  updateStageIconPickerSelection(selectEl, getStageIconPickerForSelect(selectEl));
+}
+
+function updateStageIconPickerSelection(selectEl, pickerEl) {
+  if (!selectEl || !pickerEl) return;
+  const selected = normalizeStagePickerIconId(selectEl.value);
+  pickerEl.querySelectorAll('.stage-icon-option').forEach(btn => {
+    const active = btn.dataset.stageIcon === selected;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+}
+
+function fillStageIconSelect(selectEl) {
+  selectEl.innerHTML = STAGE_ICONS.map(icon => `<option value="${escapeHtml(icon.id)}">${escapeHtml(icon.label)}</option>`).join('');
+  setStageIconSelectValue(selectEl, selectEl.value);
+}
+
+function setupStageIconPicker(selectEl, pickerEl) {
+  if (!selectEl || !pickerEl) return;
+  fillStageIconSelect(selectEl);
+  pickerEl.innerHTML = STAGE_ICONS.map((icon, index) => `
+    <button type="button" class="stage-icon-option" data-stage-icon="${escapeHtml(icon.id)}" title="${escapeHtml(icon.label)}" aria-label="${escapeHtml(icon.label)}">
+      ${makeStageIconSvg(icon, `picker-${pickerEl.id}-${index}`)}
+    </button>`).join('');
+  pickerEl.addEventListener('click', e => {
+    const btn = e.target.closest('.stage-icon-option');
+    if (!btn) return;
+    setStageIconSelectValue(selectEl, btn.dataset.stageIcon);
+  });
+  selectEl.addEventListener('change', () => updateStageIconPickerSelection(selectEl, pickerEl));
+  updateStageIconPickerSelection(selectEl, pickerEl);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -3036,8 +3465,8 @@ store.subscribe(scheduleDraftSave);
 
 initPersistenceState();
 bindHeader();
-fillShapeSelect($('nodeTypeSelect'));
-fillShapeSelect($('npShape'));
+setupStageIconPicker($('nodeTypeSelect'), $('nodeTypeSelectPicker'));
+setupStageIconPicker($('npShape'), $('npShapePicker'));
 renderAll();
 updateDraftStatus();
 syncScroll();

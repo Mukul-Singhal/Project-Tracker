@@ -142,6 +142,70 @@ body {
   border-color: var(--accent)
 }
 
+.stage-logo-field {
+  min-width: 150px;
+  position: relative;
+}
+
+.stage-icon-value {
+  position: absolute;
+  width: 1px !important;
+  height: 1px !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.stage-icon-picker {
+  display: grid;
+  grid-template-columns: repeat(4, 34px);
+  gap: 6px;
+}
+
+.stage-icon-picker.compact {
+  grid-template-columns: repeat(4, 30px);
+  gap: 4px;
+}
+
+.stage-icon-option {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--s3);
+  cursor: pointer;
+  transition: border-color .15s, background .15s, box-shadow .15s, transform .15s;
+}
+
+.stage-icon-picker.compact .stage-icon-option {
+  width: 30px;
+  height: 30px;
+  padding: 1px;
+}
+
+.stage-icon-option svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+.stage-icon-option:hover {
+  border-color: rgba(37, 99, 235, .5);
+  background: rgba(37, 99, 235, .06);
+}
+
+.stage-icon-option.active {
+  border-color: var(--accent);
+  background: rgba(37, 99, 235, .1);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, .18);
+}
+
 .mh-right {
   display: flex;
   align-items: center;
@@ -414,7 +478,9 @@ body {
 .sr-cell.proj {
   flex: 1;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   gap: 4px
 }
 
@@ -890,16 +956,49 @@ body {
 .node-shape {
   width: 28px;
   height: 28px;
-  background: #fff;
-  border: 2.5px solid var(--plan);
   transition: all .15s
 }
 
-.node-shape.square {
+.legacy-node-shape {
+  background: #fff;
+  border: 2.5px solid var(--plan);
+}
+
+.stage-icon-node {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: visible;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.stage-icon-node::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--bg);
+  z-index: 0;
+}
+
+.stage-icon-node svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.legacy-node-shape.square {
   border-radius: 5px
 }
 
-.node-shape.circle {
+.legacy-node-shape.circle {
   border-radius: 50%
 }
 
@@ -927,6 +1026,10 @@ body {
   border-style: dashed;
   background: #fff7f7;
   box-shadow: 0 0 0 3px rgba(220, 38, 38, .12);
+}
+
+.shifted-node .stage-icon-node {
+  border-style: none;
 }
 
 .shifted-postponed .node-shape {
