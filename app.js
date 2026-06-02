@@ -8,6 +8,8 @@ const SHIFT_ARROW_ARCH = 46;
 const $ = id => document.getElementById(id);
 const STORAGE_PREFIX = 'project-tracker';
 const ACTIVE_PROJECT_KEY = `${STORAGE_PREFIX}:activeProjectId`;
+const TIMELINE_VERSION_CURRENT = 'current';
+const TIMELINE_VERSION_PREFIX = 'cutoff:';
 
 const fmtDate = d => {
   if (!d) return '';
@@ -250,6 +252,137 @@ function fmtActualDate(d) {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   if (!months[month - 1]) return '';
   return match[3] ? `${Number(match[3])} ${months[month - 1]}` : `${months[month - 1]} ${match[1]}`;
+}
+
+function normalizeDiscussionDate(value) {
+  const raw = String(value || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  if (/^\d{4}-\d{2}$/.test(raw)) return raw;
+  return '';
+}
+
+function getDiscussionMonth(value) {
+  const date = normalizeDiscussionDate(value);
+  return date.length >= 7 ? date.slice(0, 7) : '';
+}
+
+function fmtDiscussionDateLabel(value) {
+  const date = normalizeDiscussionDate(value);
+  if (!date) return '';
+  const match = date.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/);
+  if (!match) return date;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = months[Number(match[2]) - 1];
+  if (!month) return date;
+  return match[3] ? `${Number(match[3])} ${month} ${match[1]}` : `${month} ${match[1]}`;
+}
+
+function getDiscussionCutoffEndTime(value) {
+  const date = normalizeDiscussionDate(value);
+  const match = date.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/);
+  if (!match) return NaN;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = match[3] ? Number(match[3]) : new Date(year, month, 0).getDate();
+  const end = new Date(year, month - 1, day, 23, 59, 59, 999);
+  return end.getTime();
+}
+
+function getSubmitVersionTime(version) {
+  const time = Date.parse(version && version.submittedAt);
+  return Number.isFinite(time) ? time : NaN;
+}
+
+function makeTimelineVersionValue(cutoffDate) {
+  return TIMELINE_VERSION_PREFIX + normalizeDiscussionDate(cutoffDate);
+}
+
+function parseTimelineVersionValue(value) {
+  const raw = String(value || '');
+  return raw.startsWith(TIMELINE_VERSION_PREFIX)
+    ? normalizeDiscussionDate(raw.slice(TIMELINE_VERSION_PREFIX.length))
+    : '';
+}
+
+function normalizeDiscussionCutoffDates(values) {
+  const list = Array.isArray(values) ? values : [];
+  return [...new Set(list
+    .map(item => normalizeDiscussionDate(typeof item === 'string' ? item : item && (item.date || item.discussionDate || item.cutoffDate)))
+    .filter(Boolean))]
+    .sort((a, b) => getDiscussionCutoffEndTime(b) - getDiscussionCutoffEndTime(a));
+}
+
+function makeSubmitVersionId(submittedAt, projectId) {
+  const time = Date.parse(submittedAt);
+  const safeTime = Number.isFinite(time) ? time : Date.now();
+  const suffix = String(projectId || 'local').replace(/[^a-zA-Z0-9_-]/g, '-');
+  return `submit-${safeTime}-${suffix}`;
+}
+
+function normalizeSubmitVersion(version) {
+  if (!version || typeof version !== 'object') return null;
+  const copy = cloneState(version);
+  const submittedAt = String(copy.submittedAt || '').trim();
+  if (!submittedAt || !Number.isFinite(Date.parse(submittedAt))) return null;
+  copy.id = String(copy.id || makeSubmitVersionId(submittedAt, copy.projectId)).trim();
+  copy.submittedAt = submittedAt;
+  copy.discussionDate = normalizeDiscussionDate(copy.discussionDate || (copy.state && copy.state.discussionDate));
+  return copy;
+}
+
+function normalizeSubmitVersions(versions) {
+  return (Array.isArray(versions) ? versions : [])
+    .map(normalizeSubmitVersion)
+    .filter(Boolean)
+    .sort((a, b) => getSubmitVersionTime(b) - getSubmitVersionTime(a) || String(b.id).localeCompare(String(a.id)));
+}
+
+function resolveSubmitVersionForCutoff(versions, cutoffDate) {
+  const cutoffEnd = getDiscussionCutoffEndTime(cutoffDate);
+  if (!Number.isFinite(cutoffEnd)) return null;
+  return normalizeSubmitVersions(versions)
+    .filter(version => getSubmitVersionTime(version) <= cutoffEnd)
+    .sort((a, b) => getSubmitVersionTime(b) - getSubmitVersionTime(a) || String(b.id).localeCompare(String(a.id)))[0] || null;
+}
+
+function buildTimelineVersionOptions(cutoffDates, versions) {
+  const dates = normalizeDiscussionCutoffDates(cutoffDates);
+  return [
+    { value: TIMELINE_VERSION_CURRENT, type: 'current', label: 'Current', disabled: false },
+    ...dates.map(cutoffDate => {
+      const version = resolveSubmitVersionForCutoff(versions, cutoffDate);
+      return {
+        value: makeTimelineVersionValue(cutoffDate),
+        type: 'snapshot',
+        cutoffDate,
+        label: fmtDiscussionDateLabel(cutoffDate),
+        disabled: !version,
+        versionId: version ? version.id : '',
+        submittedAt: version ? version.submittedAt : '',
+      };
+    }),
+  ];
+}
+
+function createSubmitVersionRecord(state, payload, submittedAt = new Date().toISOString(), id) {
+  const persistedState = normalizeStateForPersistence(state);
+  return {
+    id: id || makeSubmitVersionId(submittedAt, persistedState.projectId),
+    projectId: persistedState.projectId || '',
+    submittedAt,
+    discussionDate: normalizeDiscussionDate(persistedState.discussionDate),
+    state: persistedState,
+    payload: payload ? cloneState(payload) : createDataversePayload(persistedState),
+  };
+}
+
+function mergeSubmitVersions(existing, incoming) {
+  const versions = normalizeSubmitVersions(existing);
+  const next = normalizeSubmitVersion(incoming);
+  if (!next) return versions;
+  const byId = new Map(versions.map(version => [version.id, version]));
+  byId.set(next.id, next);
+  return normalizeSubmitVersions([...byId.values()]);
 }
 
 function stableStringify(value) {
@@ -1342,11 +1475,16 @@ function copyPlanToActualData(state) {
 let persistenceReady = false;
 let suppressDraftSave = false;
 let draftSaveTimer = null;
+let submitVersions = [];
+let discussionCutoffDates = [];
+let snapshotView = { selected: TIMELINE_VERSION_CURRENT, state: null, cutoffDate: '', versionId: '' };
 
 function getStorageKeys(projectId) {
   return {
     draft: `${STORAGE_PREFIX}:draft:${projectId}`,
     baseline: `${STORAGE_PREFIX}:baseline:${projectId}`,
+    submitVersions: `${STORAGE_PREFIX}:submit-versions:${projectId}`,
+    discussionCutoffs: `${STORAGE_PREFIX}:discussion-cutoffs:${projectId}`,
   };
 }
 
@@ -1429,6 +1567,13 @@ function scheduleDraftSave() {
 function updateDraftStatus(message) {
   const status = $('draftStatus');
   if (!status) return;
+  if (isSnapshotReadOnlyMode()) {
+    status.hidden = false;
+    $('draftStatusText').textContent = message || `Viewing ${getTimelineVersionLabel(snapshotView.selected)}`;
+    const revert = $('revertDraftBtn');
+    if (revert) revert.disabled = true;
+    return;
+  }
   const draft = readLocalJson(getCurrentStorageKeys().draft) || captureState();
   const baseline = getBaselineState();
   const dirty = isDirty(draft, baseline);
@@ -1436,15 +1581,15 @@ function updateDraftStatus(message) {
   $('draftStatusText').textContent = message || (dirty ? 'Draft changes' : 'Saved');
 }
 
-function syncHeaderInputsFromState() {
-  const { info, remarks } = store.getState();
+function syncHeaderInputsFromState(state = getTimelineRenderState()) {
+  const { info, remarks } = state;
   $('fProject').value = info.project || '';
   $('fLocation').value = info.location || '';
   $('fPlant').value = info.plant || '';
   $('fProjType').value = info.type || '';
   $('fStatus').value = info.status || 'On Track';
   $('remarksBox').textContent = remarks || '';
-  syncPubBtn();
+  syncPubBtn(state);
 }
 
 function loadSample() {
@@ -1463,9 +1608,89 @@ function loadSample() {
   });
 }
 
-function initPersistenceState() {
+function getFallbackDiscussionCutoffs(state, versions, storedCutoffs) {
+  return normalizeDiscussionCutoffDates([
+    ...(Array.isArray(storedCutoffs) ? storedCutoffs : []),
+    state && state.discussionDate,
+    ...normalizeSubmitVersions(versions).map(version => version.discussionDate),
+  ]);
+}
+
+async function loadProjectFromDataverse(projectId) {
+  if (typeof window === 'undefined') return null;
+  const bridge = window.ProjectTrackerDataverse;
+  if (!bridge || typeof bridge.loadProject !== 'function') return null;
+  return bridge.loadProject({ projectId });
+}
+
+function getLoadedProjectState(data) {
+  return (data && (data.state || data.currentState || data.draft || data.projectState)) || null;
+}
+
+function getLoadedDiscussionDate(data, state) {
+  return normalizeDiscussionDate(data && (
+    data.currentDiscussionDate ||
+    data.discussionDate ||
+    data.discussionPeriodDate ||
+    data.activeDiscussionPeriodDate ||
+    (state && state.discussionDate)
+  ));
+}
+
+function getLoadedCutoffDates(data) {
+  return normalizeDiscussionCutoffDates(data && (
+    data.discussionCutoffDates ||
+    data.cutoffDates ||
+    data.discussionPeriods ||
+    data.snapshotDates
+  ));
+}
+
+async function initPersistenceState() {
   const projectId = getOrCreateActiveProjectId();
   const keys = getStorageKeys(projectId);
+  let loaded = null;
+
+  try {
+    loaded = await loadProjectFromDataverse(projectId);
+  } catch (err) {
+    console.warn('Could not load project from Dataverse bridge:', err);
+  }
+
+  if (loaded) {
+    const loadedProjectId = loaded.projectId || projectId;
+    const loadedState = getLoadedProjectState(loaded);
+    const activeDiscussionDate = getLoadedDiscussionDate(loaded, loadedState);
+    if (loadedState) {
+      store.getState().replaceState({
+        ...loadedState,
+        ...(activeDiscussionDate ? { discussionDate: activeDiscussionDate } : {}),
+        projectId: loadedProjectId,
+      });
+    } else {
+      loadSample();
+      store.getState().setProjectId(loadedProjectId);
+      if (activeDiscussionDate) store.getState().replaceState({ ...captureState(), discussionDate: activeDiscussionDate });
+    }
+    try {
+      localStorage.setItem(ACTIVE_PROJECT_KEY, loadedProjectId);
+    } catch (err) {
+      console.warn('Could not update active project id:', err);
+    }
+    const loadedKeys = getStorageKeys(loadedProjectId);
+    submitVersions = normalizeSubmitVersions(loaded.submitVersions || loaded.versions || []);
+    discussionCutoffDates = getLoadedCutoffDates(loaded);
+    if (!discussionCutoffDates.length) {
+      discussionCutoffDates = getFallbackDiscussionCutoffs(store.getState(), submitVersions, readLocalJson(loadedKeys.discussionCutoffs));
+    }
+    writeLocalJson(loadedKeys.submitVersions, submitVersions);
+    writeLocalJson(loadedKeys.discussionCutoffs, discussionCutoffDates);
+    writeLocalJson(loadedKeys.draft, captureState());
+    if (!readLocalJson(loadedKeys.baseline)) writeLocalJson(loadedKeys.baseline, captureState());
+    persistenceReady = true;
+    return;
+  }
+
   const draft = readLocalJson(keys.draft);
   const baseline = readLocalJson(keys.baseline);
 
@@ -1483,6 +1708,10 @@ function initPersistenceState() {
   }
 
   if (!readLocalJson(keys.baseline)) writeLocalJson(keys.baseline, captureState());
+  submitVersions = normalizeSubmitVersions(readLocalJson(keys.submitVersions) || []);
+  discussionCutoffDates = getFallbackDiscussionCutoffs(store.getState(), submitVersions, readLocalJson(keys.discussionCutoffs));
+  writeLocalJson(keys.submitVersions, submitVersions);
+  writeLocalJson(keys.discussionCutoffs, discussionCutoffDates);
   persistenceReady = true;
 }
 
@@ -1632,21 +1861,49 @@ function createDataverseDelta(draft, baseline) {
   return { hasChanges: changedGroups.length > 0, changedGroups, current: nextPayload, baseline: prevPayload };
 }
 
-async function saveDraftToDataverse(draft, baseline) {
+function writeLocalSubmitVersion(projectId, submitVersion) {
+  const keys = getStorageKeys(projectId);
+  const versions = mergeSubmitVersions(readLocalJson(keys.submitVersions) || [], submitVersion);
+  const cutoffs = getFallbackDiscussionCutoffs(submitVersion.state || {}, versions, readLocalJson(keys.discussionCutoffs));
+  writeLocalJson(keys.submitVersions, versions);
+  writeLocalJson(keys.discussionCutoffs, cutoffs);
+  return { versions, cutoffs };
+}
+
+async function saveDraftToDataverse(draft, baseline, submittedAt = new Date().toISOString()) {
   const delta = createDataverseDelta(draft, baseline);
+  const submitVersion = createSubmitVersionRecord(draft, delta.current, submittedAt);
   const bridge = window.ProjectTrackerDataverse;
 
   if (bridge && typeof bridge.saveProject === 'function') {
-    return bridge.saveProject({ projectId: draft.projectId, delta, payload: delta.current });
+    const result = await bridge.saveProject({
+      projectId: draft.projectId,
+      delta,
+      payload: delta.current,
+      submitVersion,
+      submittedVersion: submitVersion,
+    });
+    return {
+      ...(result || {}),
+      submitVersion: (result && (result.submitVersion || result.submittedVersion)) || submitVersion,
+    };
   }
 
+  const localHistory = writeLocalSubmitVersion(draft.projectId, submitVersion);
   writeLocalJson(`${STORAGE_PREFIX}:dataverse-payload:${draft.projectId}`, {
     projectId: draft.projectId,
     savedAt: new Date().toISOString(),
     delta,
+    submitVersion,
   });
   console.warn('ProjectTrackerDataverse.saveProject not configured; Dataverse payload saved locally.');
-  return { projectId: draft.projectId, developmentOnly: true };
+  return {
+    projectId: draft.projectId,
+    developmentOnly: true,
+    submitVersion,
+    submitVersions: localHistory.versions,
+    discussionCutoffDates: localHistory.cutoffs,
+  };
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1665,14 +1922,156 @@ const modalOverlay = $('modalOverlay');
 const modalBody = $('modalBody');
 const modalTitle = $('modalTitle');
 
+function isSnapshotReadOnlyMode() {
+  return snapshotView.selected !== TIMELINE_VERSION_CURRENT && !!snapshotView.state;
+}
+
+function getTimelineRenderState() {
+  return isSnapshotReadOnlyMode() ? snapshotView.state : store.getState();
+}
+
+function getTimelineVersionOptions() {
+  return buildTimelineVersionOptions(discussionCutoffDates, submitVersions);
+}
+
+function getTimelineVersionLabel(value) {
+  const option = getTimelineVersionOptions().find(item => item.value === value);
+  return option ? option.label : 'Current';
+}
+
+function clearTransientTimelineUi() {
+  nodePopup.classList.remove('active');
+  ctxMenu.classList.remove('active');
+  pendCell = null;
+  ctxId = null;
+  ctxRowType = null;
+  ctxCell = null;
+  if (mergePick) clearMergePick();
+}
+
+function refreshTimelineVersionPicker() {
+  const select = $('timelineVersionSelect');
+  if (!select) return;
+  const options = getTimelineVersionOptions();
+  if (!options.some(option => option.value === snapshotView.selected && !option.disabled)) {
+    snapshotView = { selected: TIMELINE_VERSION_CURRENT, state: null, cutoffDate: '', versionId: '' };
+  }
+  select.innerHTML = options.map(option => {
+    const disabled = option.disabled ? ' disabled' : '';
+    const detail = option.disabled ? ' - no submitted version' : '';
+    return `<option value="${escapeHtml(option.value)}"${disabled}>${escapeHtml(option.label + detail)}</option>`;
+  }).join('');
+  select.value = snapshotView.selected;
+}
+
+async function loadSubmitVersionForOption(option) {
+  if (!option || !option.versionId) return null;
+  let version = submitVersions.find(item => item.id === option.versionId) || null;
+  if (version && version.state) return version;
+  const bridge = window.ProjectTrackerDataverse;
+  if (bridge && typeof bridge.getSubmitVersion === 'function') {
+    const result = await bridge.getSubmitVersion({
+      projectId: store.getState().projectId,
+      versionId: option.versionId,
+    });
+    version = normalizeSubmitVersion(result && (result.submitVersion || result.version || result));
+    if (version) {
+      submitVersions = mergeSubmitVersions(submitVersions, version);
+      refreshTimelineVersionPicker();
+      return version;
+    }
+  }
+  return version;
+}
+
+async function selectTimelineVersion(value) {
+  const select = $('timelineVersionSelect');
+  const option = getTimelineVersionOptions().find(item => item.value === value);
+  if (!option || option.disabled || option.type === 'current') {
+    snapshotView = { selected: TIMELINE_VERSION_CURRENT, state: null, cutoffDate: '', versionId: '' };
+    if (select) select.value = TIMELINE_VERSION_CURRENT;
+    syncHeaderInputsFromState(store.getState());
+    renderAll();
+    updateDraftStatus();
+    return;
+  }
+
+  const version = await loadSubmitVersionForOption(option);
+  if (!version || !version.state) {
+    alert('Snapshot data is not available for this timeline version.');
+    snapshotView = { selected: TIMELINE_VERSION_CURRENT, state: null, cutoffDate: '', versionId: '' };
+    if (select) select.value = TIMELINE_VERSION_CURRENT;
+    syncHeaderInputsFromState(store.getState());
+    renderAll();
+    updateDraftStatus();
+    return;
+  }
+
+  clearTransientTimelineUi();
+  snapshotView = {
+    selected: option.value,
+    cutoffDate: option.cutoffDate,
+    versionId: version.id,
+    state: {
+      ...cloneState(version.state),
+      discussionDate: option.cutoffDate || version.state.discussionDate || '',
+    },
+  };
+  if (select) select.value = option.value;
+  syncHeaderInputsFromState(snapshotView.state);
+  renderAll();
+  updateDraftStatus(`Viewing ${option.label}`);
+}
+
+function syncTimelineVersionsFromSaveResult(result) {
+  if (!result) return;
+  if (result.submitVersions || result.versions) {
+    submitVersions = normalizeSubmitVersions(result.submitVersions || result.versions);
+  } else if (result.submitVersion || result.submittedVersion) {
+    submitVersions = mergeSubmitVersions(submitVersions, result.submitVersion || result.submittedVersion);
+  }
+
+  const incomingCutoffs = normalizeDiscussionCutoffDates(
+    result.discussionCutoffDates || result.cutoffDates || result.discussionPeriods || []
+  );
+  discussionCutoffDates = incomingCutoffs.length
+    ? incomingCutoffs
+    : getFallbackDiscussionCutoffs(store.getState(), submitVersions, discussionCutoffDates);
+
+  const keys = getCurrentStorageKeys();
+  writeLocalJson(keys.submitVersions, submitVersions);
+  writeLocalJson(keys.discussionCutoffs, discussionCutoffDates);
+  refreshTimelineVersionPicker();
+}
+
+function updateSnapshotReadOnlyUi() {
+  const readOnly = isSnapshotReadOnlyMode();
+  document.body.classList.toggle('snapshot-readonly', readOnly);
+  [
+    'fProject', 'fLocation', 'fPlant', 'fProjType', 'fStatus', 'variantInput',
+    'nodeTypeSelect', 'addVariantBtn', 'publishToggle', 'revertDraftBtn',
+    'copyActualBtn', 'addYearBtn', 'addMsRowBtn', 'addMsColBtn',
+    'addEopRowBtn', 'submitBtn',
+  ].forEach(id => {
+    const el = $(id);
+    if (el) el.disabled = readOnly;
+  });
+  const remarks = $('remarksBox');
+  if (remarks) remarks.contentEditable = readOnly ? 'false' : 'true';
+  document.querySelectorAll('.stage-icon-option').forEach(btn => {
+    btn.disabled = readOnly;
+  });
+}
+
 function renderAll() {
-  let s = store.getState();
-  s = ensureFutureActualBlankSpaceVisible(s);
+  let s = getTimelineRenderState();
+  if (!isSnapshotReadOnlyMode()) s = ensureFutureActualBlankSpaceVisible(s);
   renderHeaders(s);
   renderSidebar(s);
   renderGrid(s);
   renderNodes(s);
   renderBottomTables(s);
+  updateSnapshotReadOnlyUi();
 }
 
 function renderHeaders(state) {
@@ -1819,6 +2218,7 @@ function renderEopLane(grp, tc, state) {
 
 function makeSubRow(tc, vId, rType, state) {
   const sr = document.createElement('div');
+  const readOnly = isSnapshotReadOnlyMode();
   sr.className = 'grid-sub-row ' + (rType === 'plan' ? 'plan-sub' : 'actual-sub');
   sr.style.height = ROH + 'px';
   sr.style.position = 'relative';
@@ -1828,8 +2228,10 @@ function makeSubRow(tc, vId, rType, state) {
     c.dataset.col = col;
     c.dataset.vId = vId;
     c.dataset.rType = rType;
-    c.addEventListener('click', onCellClick);
-    if (rType === 'plan' || rType === 'actual') c.addEventListener('contextmenu', showCellCtx);
+    if (!readOnly) {
+      c.addEventListener('click', onCellClick);
+      if (rType === 'plan' || rType === 'actual') c.addEventListener('contextmenu', showCellCtx);
+    }
     sr.appendChild(c);
   }
   return sr;
@@ -1837,6 +2239,7 @@ function makeSubRow(tc, vId, rType, state) {
 
 function makeBranchSubRow(tc, branchId, rType, label, state) {
   const sr = document.createElement('div');
+  const readOnly = isSnapshotReadOnlyMode();
   sr.className = 'grid-sub-row branch-sub' + (rType === 'actualBranch' ? ' actual-branch-sub' : '');
   sr.style.height = ROH + 'px';
   sr.style.position = 'relative';
@@ -1847,7 +2250,7 @@ function makeBranchSubRow(tc, branchId, rType, label, state) {
     c.dataset.col = col;
     c.dataset.branchId = branchId;
     c.dataset.rType = rType;
-    if (placement.ok) c.addEventListener('click', onCellClick);
+    if (placement.ok && !readOnly) c.addEventListener('click', onCellClick);
     else c.title = placement.reason;
     sr.appendChild(c);
   }
@@ -1862,7 +2265,7 @@ function makeBranchSubRow(tc, branchId, rType, label, state) {
   const pillText = document.createElement('span');
   pillText.textContent = '↳ ' + (label || 'Branch');
   pill.appendChild(pillText);
-  if (rType === 'branch' || rType === 'actualBranch') {
+  if (!readOnly && (rType === 'branch' || rType === 'actualBranch')) {
     const del = document.createElement('button');
     del.className = 'branch-pill-del';
     del.type = 'button';
@@ -2223,14 +2626,15 @@ function addDrsDetailLabel(grp, node, x, y, state) {
   const defaultPos = { x: Math.max(4, futurePoint.x), y: futurePoint.y };
   const pos = state.labelPositions[`drs:${node.id}`] || defaultPos;
   el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
-  el.addEventListener('mousedown', startDrsLabelDrag);
+  if (!isSnapshotReadOnlyMode()) el.addEventListener('mousedown', startDrsLabelDrag);
   grp.appendChild(el);
 }
 
 function mkNode(n, rType, hasShift) {
   const el = document.createElement('div');
+  const readOnly = isSnapshotReadOnlyMode();
   const cls = rType === 'plan' ? 'plan-node' : rType === 'branch' ? 'branch-node' : 'actual-node';
-  el.className = 'node ' + cls;
+  el.className = 'node ' + cls + (readOnly ? ' readonly-node' : '');
   el.dataset.nodeId = n.id;
   el.dataset.rType = rType;
   if (n.variantId) el.dataset.variantId = n.variantId;
@@ -2241,23 +2645,25 @@ function mkNode(n, rType, hasShift) {
     <span class="node-label-top">${escapeHtml(n.topLabel || '')}</span>
     ${getStageVisualMarkup(n.type, `node-${n.id}`)}
     <span class="node-label-bottom">${escapeHtml(n.bottomLabel || '')}</span>
-    ${dh}${hasShift ? '<span class="node-shift-cross">×</span>' : ''}<button class="node-del">✕</button>`;
+    ${dh}${hasShift ? '<span class="node-shift-cross">×</span>' : ''}${readOnly ? '' : '<button class="node-del">✕</button>'}`;
 
-  el.querySelector('.node-del').addEventListener('click', e => {
-    e.stopPropagation();
-    const a = store.getState();
-    if (rType === 'plan') { a.removePlanNode(n.id); a.removeMergeLinksForNode(n.id); }
-    else if (rType === 'branch') { a.removeBranchNode(n.id); a.removeMergeLinksForNode(n.id); }
-    else if (rType === 'actualBranch') { a.removeActualBranchNode(n.id); a.removeActualMergeLinksForNode(n.id); }
-    else { a.removeActualNode(n.id); a.removeActualMergeLinksForNode(n.id); }
-    if (mergePick && mergePick.fromNodeId === n.id) clearMergePick();
-    const s = store.getState();
-    renderGrid(s); renderNodes(s); persistDraftNow();
-  });
+  if (!readOnly) {
+    el.querySelector('.node-del').addEventListener('click', e => {
+      e.stopPropagation();
+      const a = store.getState();
+      if (rType === 'plan') { a.removePlanNode(n.id); a.removeMergeLinksForNode(n.id); }
+      else if (rType === 'branch') { a.removeBranchNode(n.id); a.removeMergeLinksForNode(n.id); }
+      else if (rType === 'actualBranch') { a.removeActualBranchNode(n.id); a.removeActualMergeLinksForNode(n.id); }
+      else { a.removeActualNode(n.id); a.removeActualMergeLinksForNode(n.id); }
+      if (mergePick && mergePick.fromNodeId === n.id) clearMergePick();
+      const s = store.getState();
+      renderGrid(s); renderNodes(s); persistDraftNow();
+    });
 
-  el.addEventListener('click', e => handleMergeTargetClick(e, n, rType));
-  el.addEventListener('mousedown', startNodeDrag);
-  el.addEventListener('contextmenu', e => { e.preventDefault(); showCtx(e, n.id, rType); });
+    el.addEventListener('click', e => handleMergeTargetClick(e, n, rType));
+    el.addEventListener('mousedown', startNodeDrag);
+    el.addEventListener('contextmenu', e => { e.preventDefault(); showCtx(e, n.id, rType); });
+  }
   return el;
 }
 
@@ -2286,7 +2692,7 @@ function addShiftDrsDetailLabel(grp, shift, x, y, state) {
   const defaultPos = { x: Math.max(4, futurePoint.x), y: Math.max(4, futurePoint.y) };
   const pos = state.labelPositions[`shift-drs:${shift.id}`] || defaultPos;
   el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
-  el.addEventListener('mousedown', startDrsLabelDrag);
+  if (!isSnapshotReadOnlyMode()) el.addEventListener('mousedown', startDrsLabelDrag);
   grp.appendChild(el);
 }
 
@@ -2305,23 +2711,26 @@ function mkShiftedNode(source, shift) {
 
 function renderBottomTables(state) {
   state = state || store.getState();
+  const readOnly = isSnapshotReadOnlyMode();
   renderDynTable('msTableWrap', state.leftTable, {
     updateCell: (ri, ci, v) => { store.getState().updateLeftTableCell(ri, ci, v); renderMilestoneTableOverlay(store.getState()); scheduleDraftSave(); },
     updateColName: (ci, name) => { store.getState().updateLeftTableColName(ci, name); renderMilestoneTableOverlay(store.getState()); scheduleDraftSave(); },
     deleteCol: (ci) => { store.getState().deleteLeftTableCol(ci); renderBottomTables(); renderMilestoneTableOverlay(store.getState()); persistDraftNow(); },
     deleteRow: (ri) => { store.getState().deleteLeftTableRow(ri); renderBottomTables(); renderMilestoneTableOverlay(store.getState()); persistDraftNow(); },
-  });
+  }, { readOnly });
   renderDynTable('eopTableWrap', state.rightTable, {
     updateCell: (ri, ci, v) => { store.getState().updateRightTableCell(ri, ci, v); scheduleDraftSave(); },
     updateColName: (ci, name) => { store.getState().updateRightTableColName(ci, name); scheduleDraftSave(); },
     deleteCol: (ci) => { store.getState().deleteRightTableCol(ci); renderBottomTables(); persistDraftNow(); },
     deleteRow: (ri) => { store.getState().deleteRightTableRow(ri); renderBottomTables(); persistDraftNow(); },
-  }, { allowColumnEdit: false, allowColumnDelete: false });
+  }, { allowColumnEdit: false, allowColumnDelete: false, readOnly });
 }
 
 function renderDynTable(wrapId, tbl, cbs, options = {}) {
-  const allowColumnEdit = options.allowColumnEdit !== false;
-  const allowColumnDelete = options.allowColumnDelete !== false;
+  const readOnly = !!options.readOnly;
+  const allowColumnEdit = !readOnly && options.allowColumnEdit !== false;
+  const allowColumnDelete = !readOnly && options.allowColumnDelete !== false;
+  const allowRowDelete = !readOnly;
   const wrap = $(wrapId);
   wrap.innerHTML = '';
   const table = document.createElement('table');
@@ -2365,28 +2774,33 @@ function renderDynTable(wrapId, tbl, cbs, options = {}) {
         inp.type = 'month';
         inp.value = cell || '';
         inp.className = 'dyn-date-input';
-        inp.addEventListener('change', () => cbs.updateCell(ri, ci, inp.value));
+        inp.disabled = readOnly;
+        if (!readOnly) inp.addEventListener('change', () => cbs.updateCell(ri, ci, inp.value));
         td.appendChild(inp);
       } else {
         td.className = 'dyn-td' + (cell ? ' filled' : '');
-        td.contentEditable = 'true';
+        td.contentEditable = readOnly ? 'false' : 'true';
         td.textContent = cell;
-        td.addEventListener('input', () => {
-          cbs.updateCell(ri, ci, td.textContent.trim());
-          td.classList.toggle('filled', !!td.textContent.trim());
-        });
+        if (!readOnly) {
+          td.addEventListener('input', () => {
+            cbs.updateCell(ri, ci, td.textContent.trim());
+            td.classList.toggle('filled', !!td.textContent.trim());
+          });
+        }
       }
       tr.appendChild(td);
     });
 
-    const tdx = document.createElement('td');
-    tdx.className = 'dyn-td row-del-cell';
-    const rdx = document.createElement('button');
-    rdx.className = 'row-del';
-    rdx.textContent = '×';
-    rdx.addEventListener('click', () => cbs.deleteRow(ri));
-    tdx.appendChild(rdx);
-    tr.appendChild(tdx);
+    if (allowRowDelete) {
+      const tdx = document.createElement('td');
+      tdx.className = 'dyn-td row-del-cell';
+      const rdx = document.createElement('button');
+      rdx.className = 'row-del';
+      rdx.textContent = '×';
+      rdx.addEventListener('click', () => cbs.deleteRow(ri));
+      tdx.appendChild(rdx);
+      tr.appendChild(tdx);
+    }
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
@@ -2418,12 +2832,14 @@ function addVariantLabel(key, variantId, text, defaultX, defaultY, mode, state) 
   const del = document.createElement('button');
   del.className = 'vfl-del';
   del.textContent = '×';
-  del.addEventListener('click', event => {
-    event.stopPropagation();
-    window.deleteVariant(variantId);
-  });
-  el.appendChild(del);
-  el.addEventListener('mousedown', startVLabelDrag);
+  if (!isSnapshotReadOnlyMode()) {
+    del.addEventListener('click', event => {
+      event.stopPropagation();
+      window.deleteVariant(variantId);
+    });
+    el.appendChild(del);
+    el.addEventListener('mousedown', startVLabelDrag);
+  }
   tlGrid.appendChild(el);
 }
 
@@ -2436,7 +2852,7 @@ function renderCanvasRemarks(state) {
   const pos = state.remarkPosition || defaultPos;
   el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
   el.textContent = state.remarks;
-  el.addEventListener('mousedown', startRemarkDrag);
+  if (!isSnapshotReadOnlyMode()) el.addEventListener('mousedown', startRemarkDrag);
   tlGrid.appendChild(el);
 }
 
@@ -2482,7 +2898,7 @@ function renderMilestoneTableOverlay(state) {
   table.appendChild(tbody);
   el.appendChild(table);
 
-  el.addEventListener('mousedown', startMilestoneTableDrag);
+  if (!isSnapshotReadOnlyMode()) el.addEventListener('mousedown', startMilestoneTableDrag);
   tlGrid.appendChild(el);
 }
 
@@ -2583,18 +2999,19 @@ async function exportPDF() {
   let pageRoot = null;
   await new Promise(r => setTimeout(r, 160));
   try {
+    const exportState = getTimelineRenderState();
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const pW = pdf.internal.pageSize.getWidth(), pH = pdf.internal.pageSize.getHeight(), mg = 8;
     const maxW = pW - mg * 2, maxH = pH - mg * 2;
     const sidebarWidth = Math.ceil($('sidebar').getBoundingClientRect().width || $('sidebar').scrollWidth || 360);
-    const timelineWidth = totalCols(store.getState()) * COL;
-    const gridHeight = Math.ceil(tlGrid.scrollHeight || tlGrid.getBoundingClientRect().height || getGridGroupH(store.getState()));
+    const timelineWidth = totalCols(exportState) * COL;
+    const gridHeight = Math.ceil(tlGrid.scrollHeight || tlGrid.getBoundingClientRect().height || getGridGroupH(exportState));
     const headerHeight = YH + MH;
     const pxPerMm = 4;
     const timelinePageWidth = Math.max(COL, Math.floor(maxW * pxPerMm - sidebarWidth));
     const slice = getPdfTimelineSlice({
-      totalCols: totalCols(store.getState()),
+      totalCols: totalCols(exportState),
       colWidth: COL,
       timelineWidthPx: timelinePageWidth,
       horizontalScale: PDF_EXPORT_HORIZONTAL_SCALE,
@@ -2620,7 +3037,7 @@ async function exportPDF() {
     const iW = canvas.width * ratio, iH = canvas.height * ratio;
     pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', mg + (maxW - iW) / 2, mg + (maxH - iH) / 2, iW, iH);
     st.textContent = 'Building PDF…';
-    pdf.save(`${store.getState().info.project || 'timeline'}_A4.pdf`);
+    pdf.save(`${exportState.info.project || 'timeline'}_A4.pdf`);
     st.textContent = 'Done!';
     setTimeout(() => overlay.classList.remove('active'), 700);
   } catch (err) {
@@ -2658,6 +3075,11 @@ function bindHeader() {
   $('fStatus').value = info.status;
   $('remarksBox').textContent = remarks || '';
   syncPubBtn();
+  refreshTimelineVersionPicker();
+
+  $('timelineVersionSelect').addEventListener('change', e => {
+    selectTimelineVersion(e.target.value);
+  });
 
   const map = { fProject: 'project', fLocation: 'location', fPlant: 'plant', fProjType: 'type', fStatus: 'status' };
   Object.entries(map).forEach(([id, key]) => {
@@ -2669,6 +3091,7 @@ function bindHeader() {
   });
 
   $('publishToggle').addEventListener('click', () => {
+    if (isSnapshotReadOnlyMode()) return;
     store.getState().setPublished(!store.getState().info.published);
     syncPubBtn();
     persistDraftNow();
@@ -2677,21 +3100,23 @@ function bindHeader() {
   $('revertDraftBtn').addEventListener('click', revertDraftToBaseline);
 
   $('remarksBox').addEventListener('input', () => {
+    if (isSnapshotReadOnlyMode()) return;
     store.getState().setRemarks($('remarksBox').textContent.trim());
     renderAll();
     scheduleDraftSave();
   });
 }
 
-function syncPubBtn() {
+function syncPubBtn(state = getTimelineRenderState()) {
   const btn = $('publishToggle');
-  const pub = store.getState().info.published;
+  const pub = state.info && state.info.published;
   btn.textContent = pub ? '✓ Published' : 'Not Publish';
   btn.classList.toggle('published', pub);
 }
 
 // ── Cell click → open node popup ──
 function onCellClick(e) {
+  if (isSnapshotReadOnlyMode()) return;
   if (e.target.closest('.node')) return;
   if (mergePick) { clearMergePick(); return; }
   const cell = e.currentTarget;
@@ -2736,6 +3161,7 @@ $('npIsDRS').addEventListener('change', () => {
 });
 
 $('npConfirm').addEventListener('click', () => {
+  if (isSnapshotReadOnlyMode()) return;
   if (!pendCell) return;
   const { col, vId, rType, branchId } = pendCell;
   const a = store.getState();
@@ -2771,6 +3197,7 @@ $('npCancel').addEventListener('click', () => {
 
 // ── Context menu ──
 function showCtx(e, nodeId, rType) {
+  if (isSnapshotReadOnlyMode()) return;
   ctxId = nodeId; ctxRowType = rType; ctxCell = null;
   const state = store.getState();
   const planNode = rType === 'plan' ? state.planNodes.find(n => n.id === nodeId) : null;
@@ -2796,6 +3223,7 @@ function showCtx(e, nodeId, rType) {
 
 function showCellCtx(e) {
   e.preventDefault();
+  if (isSnapshotReadOnlyMode()) return;
   const cell = e.currentTarget;
   const col = +cell.dataset.col;
   const vId = cell.dataset.vId;
@@ -2818,6 +3246,7 @@ function showCellCtx(e) {
 }
 
 $('ctxBranch').addEventListener('click', () => {
+  if (isSnapshotReadOnlyMode()) return;
   ctxMenu.classList.remove('active');
   const state = store.getState();
   const isActual = ctxRowType === 'actual' || ctxRowType === 'actualCell';
@@ -2847,6 +3276,7 @@ $('ctxBranch').addEventListener('click', () => {
 });
 
 $('ctxMerge').addEventListener('click', e => {
+  if (isSnapshotReadOnlyMode()) return;
   e.stopPropagation();
   ctxMenu.classList.remove('active');
   const isActual = ctxRowType === 'actualBranch';
@@ -2894,6 +3324,7 @@ $('ctxPreponed').addEventListener('click', () => openStageShiftModal('preponed')
 $('ctxPostponed').addEventListener('click', () => openStageShiftModal('postponed'));
 
 function openStageShiftModal(mode) {
+  if (isSnapshotReadOnlyMode()) return;
   ctxMenu.classList.remove('active');
   const state = store.getState();
   const source = findStageByContext(state, ctxRowType, ctxId);
@@ -2946,6 +3377,7 @@ function planBottomOptions(selected) {
 }
 
 function openStageEditModal(node, rType) {
+  if (isSnapshotReadOnlyMode()) return;
   if (!node) return;
   nodePopup.classList.remove('active');
   const isActual = isActualStageContext(rType);
@@ -2980,6 +3412,7 @@ function openStageEditModal(node, rType) {
 }
 
 $('ctxDelete').addEventListener('click', () => {
+  if (isSnapshotReadOnlyMode()) return;
   ctxMenu.classList.remove('active');
   if (!ctxId) return;
   const a = store.getState();
@@ -3014,6 +3447,7 @@ function clearMergePick() {
 }
 
 function handleMergeTargetClick(e, node, rType) {
+  if (isSnapshotReadOnlyMode()) return false;
   if (!mergePick) return false;
   e.preventDefault();
   e.stopPropagation();
@@ -3035,6 +3469,7 @@ function handleMergeTargetClick(e, node, rType) {
 
 // ── Variants ──
 $('addVariantBtn').addEventListener('click', () => {
+  if (isSnapshotReadOnlyMode()) return;
   const name = $('variantInput').value.trim();
   if (!name) return;
   store.getState().addVariant(name);
@@ -3043,10 +3478,11 @@ $('addVariantBtn').addEventListener('click', () => {
 });
 
 $('variantInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter') $('addVariantBtn').click();
+  if (e.key === 'Enter' && !isSnapshotReadOnlyMode()) $('addVariantBtn').click();
 });
 
 window.deleteVariant = (id) => {
+  if (isSnapshotReadOnlyMode()) return;
   if (!confirm('Delete this variant and all its stages?')) return;
   const branchIds = new Set(store.getState().branches.filter(b => b.variantId === id).map(b => b.id));
   store.getState().deleteVariant(id);
@@ -3055,14 +3491,15 @@ window.deleteVariant = (id) => {
 };
 
 // ── Bottom table buttons ──
-$('addMsRowBtn').addEventListener('click', () => { store.getState().addLeftTableRow(); renderBottomTables(); persistDraftNow(); });
-$('addMsColBtn').addEventListener('click', () => { store.getState().addLeftTableCol(); renderBottomTables(); persistDraftNow(); });
-$('addEopRowBtn').addEventListener('click', () => { store.getState().addRightTableRow(); renderBottomTables(); persistDraftNow(); });
+$('addMsRowBtn').addEventListener('click', () => { if (isSnapshotReadOnlyMode()) return; store.getState().addLeftTableRow(); renderBottomTables(); persistDraftNow(); });
+$('addMsColBtn').addEventListener('click', () => { if (isSnapshotReadOnlyMode()) return; store.getState().addLeftTableCol(); renderBottomTables(); persistDraftNow(); });
+$('addEopRowBtn').addEventListener('click', () => { if (isSnapshotReadOnlyMode()) return; store.getState().addRightTableRow(); renderBottomTables(); persistDraftNow(); });
 const addEopColBtn = $('addEopColBtn');
 addEopColBtn.hidden = true;
 addEopColBtn.disabled = true;
 
 $('copyActualBtn').addEventListener('click', () => {
+  if (isSnapshotReadOnlyMode()) return;
   store.getState().copyPlanToActual();
   renderAll();
   persistDraftNow();
@@ -3072,6 +3509,7 @@ $('copyActualBtn').addEventListener('click', () => {
 
 // ── Drag nodes ──
 function startNodeDrag(e) {
+  if (isSnapshotReadOnlyMode()) return;
   if (e.target.classList.contains('node-del')) return;
   if (e.button !== 0) return;
   if (mergePick) return;
@@ -3137,6 +3575,7 @@ function onNodeUp(e) {
 
 // ── Drag variant labels ──
 function startVLabelDrag(e) {
+  if (isSnapshotReadOnlyMode()) return;
   if (e.target.classList.contains('vfl-del')) return;
   e.preventDefault();
   dragVL = e.currentTarget;
@@ -3173,6 +3612,7 @@ function onVLUp(e) {
 
 // ── Drag remarks ──
 function startRemarkDrag(e) {
+  if (isSnapshotReadOnlyMode()) return;
   e.preventDefault();
   dragRemark = e.currentTarget;
   const r = dragRemark.getBoundingClientRect();
@@ -3205,6 +3645,7 @@ function onRemarkUp(e) {
 
 // ── Drag milestone table ──
 function startMilestoneTableDrag(e) {
+  if (isSnapshotReadOnlyMode()) return;
   e.preventDefault();
   dragMilestoneTable = e.currentTarget;
   const r = dragMilestoneTable.getBoundingClientRect();
@@ -3240,6 +3681,7 @@ function onMilestoneTableUp(e) {
 
 // ── Drag DRS detail labels ──
 function startDrsLabelDrag(e) {
+  if (isSnapshotReadOnlyMode()) return;
   e.preventDefault();
   e.stopPropagation();
   dragDrsLabel = e.currentTarget;
@@ -3285,12 +3727,14 @@ $('themeToggleBtn').addEventListener('click', () => {
 
 // ── Add year ──
 $('addYearBtn').addEventListener('click', () => {
+  if (isSnapshotReadOnlyMode()) return;
   store.getState().addYear();
   renderAll(); persistDraftNow();
 });
 
 // ── Submit / Back ──
 $('submitBtn').addEventListener('click', async () => {
+  if (isSnapshotReadOnlyMode()) return;
   const state = store.getState();
   if (getMilestoneTableRows(state).rows.length) {
     store.getState().showMilestoneTable();
@@ -3311,22 +3755,19 @@ $('submitBtn').addEventListener('click', async () => {
 
   const draft = captureState();
   const baseline = getBaselineState();
-  if (!isDirty(draft, baseline)) {
-    updateDraftStatus('Already saved');
-    setTimeout(() => updateDraftStatus(), 1400);
-    return;
-  }
+  const submittedAt = new Date().toISOString();
 
   const submitBtn = $('submitBtn');
   submitBtn.disabled = true;
   submitBtn.textContent = 'Saving…';
   try {
-    const result = await saveDraftToDataverse(draft, baseline);
+    const result = await saveDraftToDataverse(draft, baseline, submittedAt);
     const submitted = adoptProjectId(result && result.projectId, draft);
     const keys = getCurrentStorageKeys();
     writeLocalJson(keys.baseline, submitted);
     writeLocalJson(keys.draft, submitted);
     store.getState().replaceState(submitted);
+    syncTimelineVersionsFromSaveResult(result);
     syncHeaderInputsFromState();
     updateDraftStatus(result && result.developmentOnly ? 'Saved locally for Dataverse' : 'Saved');
     setTimeout(() => updateDraftStatus(), 1800);
@@ -3335,7 +3776,7 @@ $('submitBtn').addEventListener('click', async () => {
     updateDraftStatus('Save failed');
     alert('Could not save to Dataverse. Your local draft is still saved in this browser.');
   } finally {
-    submitBtn.disabled = false;
+    submitBtn.disabled = isSnapshotReadOnlyMode();
     submitBtn.textContent = 'Submit';
   }
 });
@@ -3463,11 +3904,20 @@ function setupStageIconPicker(selectEl, pickerEl) {
 
 store.subscribe(scheduleDraftSave);
 
-initPersistenceState();
-bindHeader();
-setupStageIconPicker($('nodeTypeSelect'), $('nodeTypeSelectPicker'));
-setupStageIconPicker($('npShape'), $('npShapePicker'));
-renderAll();
-updateDraftStatus();
-syncScroll();
-setupResize();
+async function bootstrap() {
+  await initPersistenceState();
+  bindHeader();
+  setupStageIconPicker($('nodeTypeSelect'), $('nodeTypeSelectPicker'));
+  setupStageIconPicker($('npShape'), $('npShapePicker'));
+  refreshTimelineVersionPicker();
+  renderAll();
+  syncHeaderInputsFromState();
+  updateDraftStatus();
+  syncScroll();
+  setupResize();
+}
+
+bootstrap().catch(err => {
+  console.error(err);
+  alert('Project Tracker failed to initialize.');
+});

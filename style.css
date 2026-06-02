@@ -214,6 +214,31 @@ body {
   flex-shrink: 0
 }
 
+.version-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.version-wrap label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .7px;
+}
+
+.version-wrap select {
+  min-width: 150px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--s3);
+  color: var(--text);
+  font: 600 11px 'Inter', sans-serif;
+  outline: none;
+}
+
 .draft-status {
   display: flex;
   align-items: center;
@@ -364,6 +389,23 @@ body {
 .tbtn.lg {
   padding: 9px 32px;
   font-size: 14px
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled,
+.stage-icon-option:disabled {
+  cursor: not-allowed;
+  opacity: .58;
+}
+
+body.snapshot-readonly .node-del,
+body.snapshot-readonly .vfl-del,
+body.snapshot-readonly .branch-pill-del,
+body.snapshot-readonly .col-del,
+body.snapshot-readonly .row-del {
+  display: none;
 }
 
 /* ── MAIN ── */
@@ -2011,6 +2053,14 @@ input[type="date"] {
 .branch-stage-disabled {
   cursor: not-allowed;
   background: rgba(148, 163, 184, .08);
+}
+
+body.snapshot-readonly .node,
+body.snapshot-readonly .vr-float-label,
+body.snapshot-readonly .canvas-remark,
+body.snapshot-readonly .milestone-grid-table,
+body.snapshot-readonly .drs-detail-label {
+  cursor: default;
 }
 
 [data-theme="dark"] .eop-label {

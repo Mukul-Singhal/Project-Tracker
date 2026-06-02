@@ -13,11 +13,25 @@ function loadPersistenceFromApp() {
   assert.notEqual(end, -1, 'Could not find persistence dependency end in app.js');
 
   const persistenceSource = `const COL = 52, ROH = 90;
+const TIMELINE_VERSION_CURRENT = 'current';
+const TIMELINE_VERSION_PREFIX = 'cutoff:';
 ${source.slice(start, end)}
 module.exports = {
   STAGE_ICONS,
   stableStringify,
   cloneState,
+  normalizeDiscussionDate,
+  getDiscussionMonth,
+  fmtDiscussionDateLabel,
+  getDiscussionCutoffEndTime,
+  normalizeDiscussionCutoffDates,
+  normalizeSubmitVersions,
+  resolveSubmitVersionForCutoff,
+  buildTimelineVersionOptions,
+  createSubmitVersionRecord,
+  mergeSubmitVersions,
+  makeTimelineVersionValue,
+  parseTimelineVersionValue,
   getDefaultStageIconId,
   normalizeStageIconId,
   getStageVisualMarkup,
@@ -122,6 +136,52 @@ test('getDiscussionPeriodClass identifies highlighted discussion columns', () =>
   assert.equal(persistence.getDiscussionPeriodClass(8, state), 'discussion-current');
   assert.equal(persistence.getDiscussionPeriodClass(9, state), 'discussion-next');
   assert.equal(persistence.getDiscussionPeriodClass(10, state), '');
+});
+
+test('discussion period helpers accept full cutoff dates and format labels', () => {
+  assert.equal(persistence.normalizeDiscussionDate('2024-06-20'), '2024-06-20');
+  assert.equal(persistence.normalizeDiscussionDate('2024-06'), '2024-06');
+  assert.equal(persistence.normalizeDiscussionDate('06-2024'), '');
+  assert.equal(persistence.getDiscussionMonth('2024-06-20'), '2024-06');
+  assert.equal(persistence.fmtDiscussionDateLabel('2024-06-20'), '20 Jun 2024');
+  assert.equal(persistence.fmtDiscussionDateLabel('2024-06'), 'Jun 2024');
+  assert.deepEqual(toPlain(persistence.getDiscussionPeriodCols({
+    years: [2024, 2025],
+    discussionDate: '2024-06-20',
+  })), {
+    prev: 4,
+    current: 5,
+    next: 6,
+  });
+});
+
+test('cutoff snapshots resolve to the latest submit before the cutoff end of day', () => {
+  const versions = [
+    { id: 'early', submittedAt: '2024-06-01T12:00:00Z', discussionDate: '2024-06-20' },
+    { id: 'latest-before', submittedAt: '2024-06-20T12:00:00Z', discussionDate: '2024-06-20' },
+    { id: 'after-cutoff', submittedAt: '2024-06-21T12:00:00Z', discussionDate: '2024-07-27' },
+  ];
+
+  assert.equal(persistence.resolveSubmitVersionForCutoff(versions, '2024-06-20').id, 'latest-before');
+  assert.equal(persistence.resolveSubmitVersionForCutoff(versions, '2024-06-19').id, 'early');
+  assert.equal(persistence.resolveSubmitVersionForCutoff(versions, '2024-05-31'), null);
+});
+
+test('timeline version options expose current and disable cutoffs without submitted versions', () => {
+  const versions = [
+    { id: 'june-submit', submittedAt: '2024-06-20T12:00:00Z', discussionDate: '2024-06-20' },
+  ];
+
+  const options = persistence.buildTimelineVersionOptions(['2024-06-20', '2024-05-20'], versions);
+
+  assert.equal(options[0].value, 'current');
+  assert.equal(options[1].value, 'cutoff:2024-06-20');
+  assert.equal(options[1].label, '20 Jun 2024');
+  assert.equal(options[1].disabled, false);
+  assert.equal(options[1].versionId, 'june-submit');
+  assert.equal(options[2].value, 'cutoff:2024-05-20');
+  assert.equal(options[2].disabled, true);
+  assert.equal(persistence.parseTimelineVersionValue(options[1].value), '2024-06-20');
 });
 
 test('dateToCol accepts full dates by using the year and month portion', () => {
@@ -403,6 +463,65 @@ test('createDataversePayload includes discussion period date', () => {
   });
 
   assert.equal(payload.project.discussion_period_date, '2024-09');
+});
+
+test('createDataversePayload includes full discussion cutoff dates', () => {
+  const payload = persistence.createDataversePayload({
+    projectId: 'local-1',
+    info: { project: 'Alpha' },
+    variants: [],
+    planNodes: [],
+    actualNodes: [],
+    branches: [],
+    branchNodes: [],
+    actualBranchNodes: [],
+    mergeLinks: [],
+    stageShifts: [],
+    leftTable: { cols: [], rows: [] },
+    rightTable: { cols: [], rows: [] },
+    years: [2024, 2025],
+    eopDate: '',
+    eopItems: [],
+    discussionDate: '2024-06-20',
+  });
+
+  assert.equal(payload.project.discussion_period_date, '2024-06-20');
+});
+
+test('createSubmitVersionRecord preserves submitted state and Dataverse payload', () => {
+  const state = {
+    projectId: 'local-1',
+    info: { project: 'Alpha', published: true },
+    variants: [{ id: 'v1', name: 'DOM Gas' }],
+    planNodes: [{ id: 'p1', variantId: 'v1', col: 5, type: persistence.STAGE_ICONS[0].id, topLabel: 'DA', date: '2024-06' }],
+    actualNodes: [],
+    branches: [],
+    branchNodes: [],
+    actualBranchNodes: [],
+    mergeLinks: [],
+    stageShifts: [],
+    leftTable: { cols: [], rows: [] },
+    rightTable: { cols: [], rows: [] },
+    years: [2024, 2025],
+    eopDate: '',
+    eopItems: [],
+    discussionDate: '2024-06-20',
+  };
+  const payload = persistence.createDataversePayload(state);
+  const version = persistence.createSubmitVersionRecord(state, payload, '2024-06-20T12:00:00Z', 'submit-june');
+
+  assert.equal(version.id, 'submit-june');
+  assert.equal(version.submittedAt, '2024-06-20T12:00:00Z');
+  assert.equal(version.discussionDate, '2024-06-20');
+  assert.equal(version.state.planNodes[0].id, 'p1');
+  assert.equal(version.payload.project.discussion_period_date, '2024-06-20');
+});
+
+test('mergeSubmitVersions accepts immutable submit versions and replaces by id', () => {
+  const existing = [{ id: 'same', submittedAt: '2024-06-01T12:00:00Z', discussionDate: '2024-06-20', state: { value: 1 } }];
+  const next = { id: 'same', submittedAt: '2024-06-02T12:00:00Z', discussionDate: '2024-06-20', state: { value: 2 } };
+
+  assert.deepEqual(toPlain(persistence.mergeSubmitVersions(existing, next)), [next]);
 });
 
 test('parseEopItems returns ordered EOP markers from multiple table rows', () => {
@@ -1091,12 +1210,37 @@ test('EOP table columns are locked in the UI', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 
   assert.match(html, /id="addEopColBtn" hidden disabled/);
-  assert.match(source, /renderDynTable\('eopTableWrap', state\.rightTable,[\s\S]*\{ allowColumnEdit: false, allowColumnDelete: false \}\)/);
+  assert.match(source, /renderDynTable\('eopTableWrap', state\.rightTable,[\s\S]*\{ allowColumnEdit: false, allowColumnDelete: false, readOnly \}\)/);
   assert.match(source, /sp\.contentEditable = allowColumnEdit \? 'true' : 'false'/);
   assert.match(source, /if \(allowColumnDelete && ci > 0\)/);
   assert.match(source, /addEopColBtn\.hidden = true/);
   assert.match(source, /addEopColBtn\.disabled = true/);
   assert.doesNotMatch(source, /\$\('addEopColBtn'\)\.addEventListener\('click', \(\) => \{ store\.getState\(\)\.addRightTableCol/);
+});
+
+test('timeline version dropdown and snapshot read-only path are wired', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+
+  assert.match(html, /<label for="timelineVersionSelect">Timeline Version<\/label>/);
+  assert.match(html, /<select id="timelineVersionSelect"/);
+  assert.match(source, /function isSnapshotReadOnlyMode/);
+  assert.match(source, /function getTimelineRenderState/);
+  assert.match(source, /let snapshotView = \{ selected: TIMELINE_VERSION_CURRENT, state: null/);
+  assert.match(source, /if \(!isSnapshotReadOnlyMode\(\)\) s = ensureFutureActualBlankSpaceVisible\(s\)/);
+  assert.match(source, /updateSnapshotReadOnlyUi/);
+  assert.match(source, /'copyActualBtn', 'addYearBtn', 'addMsRowBtn', 'addMsColBtn'/);
+  assert.match(source, /submitBtn\.disabled = isSnapshotReadOnlyMode\(\)/);
+});
+
+test('Dataverse bridge includes submit-version history contract', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+
+  assert.match(source, /loadProject\(\{ projectId \}\)/);
+  assert.match(source, /getSubmitVersion\(\{/);
+  assert.match(source, /saveProject\(\{[\s\S]*submitVersion,[\s\S]*submittedVersion: submitVersion/);
+  assert.match(source, /writeLocalJson\(keys\.submitVersions, submitVersions\)/);
+  assert.match(source, /writeLocalJson\(keys\.discussionCutoffs, discussionCutoffDates\)/);
 });
 
 test('merge and shift modals set date picker bounds from the source stage month', () => {

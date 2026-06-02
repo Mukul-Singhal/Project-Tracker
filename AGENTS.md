@@ -2,7 +2,7 @@
 
 # Project Tracker Agent Notes
 
-Use this file as the first local orientation point before editing. It is intentionally detailed enough to avoid re-reading the whole app for common work.
+Use this file as the first local orientation point before editing. Always read `README.md` alongside it before code or behavior changes, because `AGENTS.md` captures agent workflow notes while `README.md` captures the product and architecture reference. When a change affects both agent guidance and user/project documentation, update both files in the same pass.
 
 ## Project Shape
 
@@ -130,10 +130,21 @@ Use this file as the first local orientation point before editing. It is intenti
 
 - `captureState()` normalizes store state for local persistence.
 - Local draft/baseline keys are derived from `projectId`.
+- Submit-version history is stored separately from the editable draft and baseline. Runtime globals:
+  - `submitVersions`
+  - `discussionCutoffDates`
+  - `snapshotView`
 - Draft saves are debounced by `scheduleDraftSave()` at 80ms.
 - `createDataversePayload()` builds grouped entities for project, variants, branches, stages, merge links, and actual merge links.
 - `createDataverseDelta()` compares grouped payloads via stable stringification.
-- Without `window.ProjectTrackerDataverse.saveProject`, submit writes Dataverse-shaped data to localStorage for development.
+- Successful Submit creates an immutable version record `{ id, submittedAt, discussionDate, state, payload }`.
+- `Timeline Version` dropdown resolves backend cutoff dates by selecting the latest submit version with `submittedAt` on or before the cutoff end-of-day.
+- Historical snapshot views render from `snapshotView.state` and must remain read-only; do not replace the editable store state when selecting a snapshot.
+- Dataverse bridge hooks:
+  - `loadProject({ projectId })`
+  - `saveProject({ projectId, delta, payload, submitVersion })`
+  - optional `getSubmitVersion({ projectId, versionId })`
+- Without `window.ProjectTrackerDataverse.saveProject`, submit writes Dataverse-shaped data and submit-version history to localStorage for development.
 
 ## UI and CSS Guidance
 
@@ -166,6 +177,9 @@ Use this file as the first local orientation point before editing. It is intenti
 For visual changes, use the in-app browser or a local static server and check:
 
 - Page loads without console errors.
+- Timeline Version dropdown shows `Current` and available backend/local cutoff dates.
+- Selecting a historical cutoff renders the saved snapshot without overwriting the current draft.
+- Snapshot mode disables editing controls, stage drag/drop, add/delete, Copy to Actual, Publish Status, and Submit.
 - Header stage logo picker shows all configured logos.
 - Add-stage popup inherits the header-selected logo.
 - Created stages render the selected SVG.
