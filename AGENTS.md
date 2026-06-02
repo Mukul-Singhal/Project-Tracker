@@ -110,7 +110,10 @@ Use this file as the first local orientation point before editing. Always read `
   - `Beg` -> 0.25
   - `Mid` or empty/legacy -> 0.5
   - `End` -> 0.75
-- Duplicate stages in the same row/month/slot are nudged by `getStageVisualX()`; connectors and DRS labels use this same visual x.
+- Duplicate stages in the same row/month/slot are nudged by `getStageVisualX()`; connectors use this same visual x.
+- Dragging a stage updates both its `col` and stored `date`, so edit dialogs show the moved month/year.
+- Remarks render as one draggable numbered summary box using `remarkPosition`.
+- DRS details from stages and preponed/postponed shifts render as one draggable numbered summary box using `labelPositions['drs:summary']`.
 - Actual stages require a full `YYYY-MM-DD` date and cannot be in the future.
 - Plan stages use optional `YYYY-MM`; if cleared, they stay in the clicked month.
 
@@ -124,7 +127,7 @@ Use this file as the first local orientation point before editing. Always read `
   - Source stage stays in place with red cross.
   - Shifted copy renders at target month.
   - Shift arrows are SVG paths using `SHIFT_ARROW_ARCH`.
-  - Shift markers require shift-specific DRS detail.
+  - Shift markers require shift-specific DRS detail, which appears in the cumulative DRS Details box.
 
 ## Persistence and Dataverse
 
@@ -185,6 +188,8 @@ For visual changes, use the in-app browser or a local static server and check:
 - Created stages render the selected SVG.
 - Normal timeline lines do not visibly cut through SVG interiors.
 - Dragging and clicking stages still work.
+- Dragged stage edit dialogs show the moved month/date.
+- Remarks and DRS Details render as single numbered summary boxes.
 - Actual/plan labels and dates still align.
 
 ## Editing Discipline

@@ -1516,6 +1516,7 @@ body.snapshot-readonly .row-del {
   color: var(--text);
   outline: none;
   cursor: text;
+  white-space: pre-wrap;
   transition: border-color .15s, box-shadow .15s;
 }
 
@@ -1586,13 +1587,13 @@ body.snapshot-readonly .row-del {
   color: var(--actual);
 }
 
-/* ── CANVAS REMARKS ── */
-.canvas-remark {
+/* ── TIMELINE SUMMARY BOXES ── */
+.timeline-summary-box {
   position: absolute;
   z-index: 7;
   max-width: 360px;
   padding: 6px 10px;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid rgba(37, 99, 235, .35);
   background: rgba(255, 255, 255, .88);
   color: var(--text);
@@ -1606,8 +1607,39 @@ body.snapshot-readonly .row-del {
   user-select: none;
 }
 
-[data-theme="dark"] .canvas-remark {
+.timeline-summary-title {
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.timeline-summary-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.timeline-summary-list li {
+  margin: 2px 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.drs-summary-box {
+  z-index: 8;
+  max-width: 420px;
+  border-color: rgba(37, 99, 235, .32);
+  background: rgba(232, 240, 249, .94);
+  font-size: 11px;
+}
+
+[data-theme="dark"] .timeline-summary-box {
   background: rgba(22, 27, 34, .9);
+}
+
+[data-theme="dark"] .drs-summary-box {
+  background: rgba(37, 45, 69, .96);
 }
 
 /* ── MILESTONE TABLE OVERLAY ── */
@@ -2058,6 +2090,7 @@ input[type="date"] {
 body.snapshot-readonly .node,
 body.snapshot-readonly .vr-float-label,
 body.snapshot-readonly .canvas-remark,
+body.snapshot-readonly .timeline-summary-box,
 body.snapshot-readonly .milestone-grid-table,
 body.snapshot-readonly .drs-detail-label {
   cursor: default;

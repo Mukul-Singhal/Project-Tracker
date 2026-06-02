@@ -50,6 +50,8 @@ module.exports = {
   canPlaceBranchStageAtCol: typeof canPlaceBranchStageAtCol === 'function' ? canPlaceBranchStageAtCol : undefined,
   colToInputMonth: typeof colToInputMonth === 'function' ? colToInputMonth : undefined,
   colToInputDate: typeof colToInputDate === 'function' ? colToInputDate : undefined,
+  getMovedStageDate: typeof getMovedStageDate === 'function' ? getMovedStageDate : undefined,
+  moveStageNodeToCol: typeof moveStageNodeToCol === 'function' ? moveStageNodeToCol : undefined,
   getInputDateFromToday: typeof getInputDateFromToday === 'function' ? getInputDateFromToday : undefined,
   getNextMonthInputMonth: typeof getNextMonthInputMonth === 'function' ? getNextMonthInputMonth : undefined,
   isActualDateInFuture: typeof isActualDateInFuture === 'function' ? isActualDateInFuture : undefined,
@@ -64,6 +66,8 @@ module.exports = {
   addStageShiftData,
   removeStageShiftsForNodeData,
   getMilestoneTableRows: typeof getMilestoneTableRows === 'function' ? getMilestoneTableRows : undefined,
+  getRemarkSummaryItems: typeof getRemarkSummaryItems === 'function' ? getRemarkSummaryItems : undefined,
+  collectDrsSummaryItems: typeof collectDrsSummaryItems === 'function' ? collectDrsSummaryItems : undefined,
   getDiscussionPeriodCols: typeof getDiscussionPeriodCols === 'function' ? getDiscussionPeriodCols : undefined,
   getDiscussionPeriodClass: typeof getDiscussionPeriodClass === 'function' ? getDiscussionPeriodClass : undefined,
   dateToCol: typeof dateToCol === 'function' ? dateToCol : undefined,
@@ -388,6 +392,48 @@ test('updateStageNodeData edits the correct stage collection and recalculates th
   assert.equal(actualNext.actualBranchNodes[0].col, 18);
   assert.equal(actualNext.actualBranchNodes[0].date, '2025-07-15');
   assert.equal(actualNext.actualBranchNodes[0].bottomLabel, '');
+});
+
+test('moveStageNodeToCol updates plan stage dates to the moved month', () => {
+  const state = { years: [2024, 2025] };
+  const movedPlan = persistence.moveStageNodeToCol(
+    { id: 'p1', col: 1, date: '2024-02', bottomLabel: 'Mid' },
+    'plan',
+    14,
+    state
+  );
+  const movedBranch = persistence.moveStageNodeToCol(
+    { id: 'b1', col: 2, date: '2024-03', bottomLabel: 'End' },
+    'branch',
+    17,
+    state
+  );
+
+  assert.equal(movedPlan.col, 14);
+  assert.equal(movedPlan.date, '2025-03');
+  assert.equal(movedPlan.bottomLabel, 'Mid');
+  assert.equal(movedBranch.date, '2025-06');
+});
+
+test('moveStageNodeToCol updates actual dates while preserving or clamping the day', () => {
+  const state = { years: [2024, 2025] };
+  const movedActual = persistence.moveStageNodeToCol(
+    { id: 'a1', col: 0, date: '2024-01-27' },
+    'actual',
+    15,
+    state
+  );
+  const clampedActualBranch = persistence.moveStageNodeToCol(
+    { id: 'ab1', col: 7, date: '2024-08-31' },
+    'actualBranch',
+    13,
+    state
+  );
+
+  assert.equal(movedActual.col, 15);
+  assert.equal(movedActual.date, '2025-04-27');
+  assert.equal(clampedActualBranch.col, 13);
+  assert.equal(clampedActualBranch.date, '2025-02-28');
 });
 
 test('fmtActualDate shows actual stage dates as day and month', () => {
@@ -973,12 +1019,10 @@ test('future actual blank-space defaults are used for labels and table overlays'
 
   assert.match(source, /function getFutureActualBlankSpacePoint/);
   assert.match(source, /s = ensureFutureActualBlankSpaceVisible\(s\)/);
-  assert.match(source, /const futurePoint = getFutureActualBlankSpacePoint\(state, new Date\(\), 18\)/);
   assert.match(source, /const futurePoint = getFutureActualBlankSpacePoint\(state, new Date\(\), -22\)/);
   assert.match(source, /const defaultPos = getFutureActualBlankSpacePoint\(state, new Date\(\), 18\)/);
   assert.match(source, /const defaultPos = getFutureActualBlankSpacePoint\(state, new Date\(\), 44\)/);
-  assert.match(source, /state\.labelPositions\[`drs:\$\{node\.id\}`\] \|\| defaultPos/);
-  assert.match(source, /state\.labelPositions\[`shift-drs:\$\{shift\.id\}`\] \|\| defaultPos/);
+  assert.match(source, /\(state\.labelPositions \|\| \{\}\)\['drs:summary'\] \|\| defaultPos/);
   assert.match(source, /state\.remarkPosition \|\| defaultPos/);
   assert.match(source, /state\.labelPositions\['milestone:table'\] \|\| defaultPos/);
 });
@@ -1106,37 +1150,50 @@ test('addStageShiftData allows multiple shifts for one source stage', () => {
   ]);
 });
 
-test('stage shift modal requires DRS detail and shifted DRS labels use shift-specific positions', () => {
+test('stage shift modal requires DRS detail and shifted DRS details feed the summary box', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 
   assert.match(source, /id="f_shift_drs_detail"/);
   assert.match(source, /const drsDetail = \$\('f_shift_drs_detail'\)\.value\.trim\(\)/);
   assert.match(source, /Enter DRS Details for the shifted stage\./);
   assert.match(source, /drsDetail,/);
-  assert.match(source, /function addShiftDrsDetailLabel/);
-  assert.match(source, /shift-drs:\$\{shift\.id\}/);
+  assert.match(source, /state\.stageShifts \|\| \[\]/);
+  assert.match(source, /const source = findStageByContext\(state, shift\.sourceContext, shift\.sourceNodeId\)/);
+  assert.match(source, /Preponed Shift/);
+  assert.match(source, /Postponed Shift/);
 });
 
-test('grid DRS and remark labels wrap full text instead of truncating it', () => {
+test('timeline summary boxes wrap full text instead of truncating it', () => {
   const style = fs.readFileSync(path.join(__dirname, '..', 'style.css'), 'utf8');
-  const drsStart = style.indexOf('.drs-detail-label');
-  const drsEnd = style.indexOf('[data-theme="dark"] .eop-label');
-  const remarkStart = style.indexOf('.canvas-remark');
-  const remarkEnd = style.indexOf('[data-theme="dark"] .canvas-remark');
+  const summaryStart = style.indexOf('.timeline-summary-box');
+  const summaryEnd = style.indexOf('/* ── MILESTONE TABLE OVERLAY');
+  const drsStart = style.indexOf('.drs-summary-box');
 
+  assert.notEqual(summaryStart, -1);
+  assert.notEqual(summaryEnd, -1);
   assert.notEqual(drsStart, -1);
-  assert.notEqual(drsEnd, -1);
-  assert.notEqual(remarkStart, -1);
-  assert.notEqual(remarkEnd, -1);
-  const drsCss = style.slice(drsStart, drsEnd);
-  const remarkCss = style.slice(remarkStart, remarkEnd);
+  const summaryCss = style.slice(summaryStart, summaryEnd);
 
-  assert.match(drsCss, /white-space:\s*normal/);
-  assert.match(drsCss, /overflow-wrap:\s*anywhere/);
-  assert.doesNotMatch(drsCss, /text-overflow:\s*ellipsis/);
-  assert.doesNotMatch(drsCss, /overflow:\s*hidden/);
-  assert.match(remarkCss, /white-space:\s*normal/);
-  assert.match(remarkCss, /overflow-wrap:\s*anywhere/);
+  assert.match(summaryCss, /white-space:\s*normal/);
+  assert.match(summaryCss, /overflow-wrap:\s*anywhere/);
+  assert.match(summaryCss, /\.timeline-summary-list li/);
+  assert.match(summaryCss, /\.drs-summary-box/);
+  assert.doesNotMatch(summaryCss, /text-overflow:\s*ellipsis/);
+  assert.doesNotMatch(summaryCss, /overflow:\s*hidden/);
+});
+
+test('remarks and DRS details render as cumulative numbered summary boxes', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+
+  assert.match(source, /function getRemarkSummaryItems/);
+  assert.match(source, /function collectDrsSummaryItems/);
+  assert.match(source, /function makeTimelineSummaryBox/);
+  assert.match(source, /makeTimelineSummaryBox\('Remarks'/);
+  assert.match(source, /makeTimelineSummaryBox\('DRS Details'/);
+  assert.match(source, /\(state\.labelPositions \|\| \{\}\)\['drs:summary'\]/);
+  assert.match(source, /renderDrsSummaryBox\(grp, state\)/);
+  assert.doesNotMatch(source, /addDrsDetailLabel\(grp/);
+  assert.doesNotMatch(source, /addShiftDrsDetailLabel\(grp/);
 });
 
 test('branch row cells before the branch start are disabled and placement is validated in UI paths', () => {

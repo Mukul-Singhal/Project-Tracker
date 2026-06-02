@@ -558,7 +558,7 @@ const store = createStore((set, get) => ({
     nid: s.nid + 1,
   })),
   removePlanNode: (id) => set(s => ({ planNodes: s.planNodes.filter(n => n.id !== id), ...removeStageShiftsForNodeData(s, id) })),
-  movePlanNode: (id, col) => set(s => ({ planNodes: s.planNodes.map(n => n.id === id ? { ...n, col } : n) })),
+  movePlanNode: (id, col) => set(s => ({ planNodes: s.planNodes.map(n => n.id === id ? moveStageNodeToCol(n, 'plan', col, s) : n) })),
   updatePlanNode: (id, data) => set(s => {
     const next = updateStageNodeData(s, 'plan', id, data);
     if (next.ok === false) return {};
@@ -572,7 +572,7 @@ const store = createStore((set, get) => ({
     nid: s.nid + 1,
   })),
   removeActualNode: (id) => set(s => ({ actualNodes: s.actualNodes.filter(n => n.id !== id), ...removeStageShiftsForNodeData(s, id) })),
-  moveActualNode: (id, col) => set(s => ({ actualNodes: s.actualNodes.map(n => n.id === id ? { ...n, col } : n) })),
+  moveActualNode: (id, col) => set(s => ({ actualNodes: s.actualNodes.map(n => n.id === id ? moveStageNodeToCol(n, 'actual', col, s) : n) })),
   updateActualNode: (id, data) => set(s => {
     const next = updateStageNodeData(s, 'actual', id, data);
     if (next.ok === false) return {};
@@ -587,7 +587,7 @@ const store = createStore((set, get) => ({
     nid: s.nid + 1,
   })),
   removeBranchNode: (id) => set(s => removeBranchNodeData(s, id)),
-  moveBranchNode: (id, col) => set(s => ({ branchNodes: s.branchNodes.map(n => n.id === id ? { ...n, col } : n) })),
+  moveBranchNode: (id, col) => set(s => ({ branchNodes: s.branchNodes.map(n => n.id === id ? moveStageNodeToCol(n, 'branch', col, s) : n) })),
   updateBranchNode: (id, data) => set(s => {
     const next = updateStageNodeData(s, 'branch', id, data);
     if (next.ok === false) return {};
@@ -601,7 +601,7 @@ const store = createStore((set, get) => ({
     nid: s.nid + 1,
   })),
   removeActualBranchNode: (id) => set(s => removeActualBranchNodeData(s, id)),
-  moveActualBranchNode: (id, col) => set(s => ({ actualBranchNodes: s.actualBranchNodes.map(n => n.id === id ? { ...n, col } : n) })),
+  moveActualBranchNode: (id, col) => set(s => ({ actualBranchNodes: s.actualBranchNodes.map(n => n.id === id ? moveStageNodeToCol(n, 'actualBranch', col, s) : n) })),
   updateActualBranchNode: (id, data) => set(s => {
     const next = updateStageNodeData(s, 'actualBranch', id, data);
     if (next.ok === false) return {};
@@ -1022,6 +1022,34 @@ function colToDate(col, state) {
   const month = (col % 12) + 1;
   if (!year || month < 1 || month > 12) return '';
   return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+function getLastDayOfInputMonth(monthValue) {
+  const match = String(monthValue || '').match(/^(\d{4})-(\d{2})$/);
+  if (!match) return 1;
+  return new Date(Number(match[1]), Number(match[2]), 0).getDate();
+}
+
+function getActualDateDay(value) {
+  const match = String(value || '').match(/^\d{4}-\d{2}-(\d{2})$/);
+  return match ? Number(match[1]) : 1;
+}
+
+function getMovedStageDate(node, rType, col, state) {
+  const month = colToInputMonth(col, state);
+  if (!month) return (node && node.date) || '';
+  if (!isActualStageContext(rType)) return month;
+  const day = Math.min(getActualDateDay(node && node.date), getLastDayOfInputMonth(month));
+  return `${month}-${String(day).padStart(2, '0')}`;
+}
+
+function moveStageNodeToCol(node, rType, col, state) {
+  if (!node) return node;
+  return {
+    ...node,
+    col,
+    date: getMovedStageDate(node, rType, col, state),
+  };
 }
 
 function getPdfTimelineSlice({ totalCols, colWidth, timelineWidthPx, horizontalScale = 1 }) {
@@ -2561,7 +2589,7 @@ function getStageShiftTargetCenter(shift, source, state) {
 }
 
 function renderNodes(state) {
-  document.querySelectorAll('.node,.drs-detail-label').forEach(e => e.remove());
+  document.querySelectorAll('.node,.drs-detail-label,.drs-summary-box').forEach(e => e.remove());
   const grp = tlGrid.querySelector('.grid-vr-grp');
   if (!grp) return;
   const shiftedNodeIds = new Set((state.stageShifts || []).map(shift => shift.sourceNodeId));
@@ -2574,7 +2602,6 @@ function renderNodes(state) {
     const el = mkNode(n, 'plan', shiftedNodeIds.has(n.id));
     el.style.cssText = `left:${x - 14}px;top:${y - 14}px`;
     grp.appendChild(el);
-    addDrsDetailLabel(grp, n, x, y, state);
   });
 
   state.branchNodes.forEach(n => {
@@ -2585,7 +2612,6 @@ function renderNodes(state) {
     const el = mkNode(n, 'branch', shiftedNodeIds.has(n.id));
     el.style.cssText = `left:${x - 14}px;top:${y - 14}px`;
     grp.appendChild(el);
-    addDrsDetailLabel(grp, n, x, y, state);
   });
 
   state.actualNodes.forEach(n => {
@@ -2596,7 +2622,6 @@ function renderNodes(state) {
     const el = mkNode(n, 'actual', shiftedNodeIds.has(n.id));
     el.style.cssText = `left:${x - 14}px;top:${y - 14}px`;
     grp.appendChild(el);
-    addDrsDetailLabel(grp, n, x, y, state);
   });
 
   state.actualBranchNodes.forEach(n => {
@@ -2607,27 +2632,11 @@ function renderNodes(state) {
     const el = mkNode(n, 'actualBranch', shiftedNodeIds.has(n.id));
     el.style.cssText = `left:${x - 14}px;top:${y - 14}px`;
     grp.appendChild(el);
-    addDrsDetailLabel(grp, n, x, y, state);
   });
 
   renderStageShiftNodes(grp, state);
+  renderDrsSummaryBox(grp, state);
   updateMergeTargetClasses();
-}
-
-function addDrsDetailLabel(grp, node, x, y, state) {
-  const text = String(node.drsDetail || '').trim();
-  if (!node.isDRS || !text) return;
-  const el = document.createElement('div');
-  el.className = 'drs-detail-label';
-  el.dataset.labelKey = `drs:${node.id}`;
-  el.title = text;
-  el.textContent = text;
-  const futurePoint = getFutureActualBlankSpacePoint(state, new Date(), 18);
-  const defaultPos = { x: Math.max(4, futurePoint.x), y: futurePoint.y };
-  const pos = state.labelPositions[`drs:${node.id}`] || defaultPos;
-  el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
-  if (!isSnapshotReadOnlyMode()) el.addEventListener('mousedown', startDrsLabelDrag);
-  grp.appendChild(el);
 }
 
 function mkNode(n, rType, hasShift) {
@@ -2676,24 +2685,7 @@ function renderStageShiftNodes(grp, state) {
     const el = mkShiftedNode(source, shift);
     el.style.cssText = `left:${target.x - 14}px;top:${target.y - 14}px`;
     grp.appendChild(el);
-    addShiftDrsDetailLabel(grp, shift, target.x, target.y, state);
   });
-}
-
-function addShiftDrsDetailLabel(grp, shift, x, y, state) {
-  const text = String(shift.drsDetail || '').trim();
-  if (!text) return;
-  const el = document.createElement('div');
-  el.className = 'drs-detail-label shift-drs-detail-label';
-  el.dataset.labelKey = `shift-drs:${shift.id}`;
-  el.title = text;
-  el.textContent = text;
-  const futurePoint = getFutureActualBlankSpacePoint(state, new Date(), -22);
-  const defaultPos = { x: Math.max(4, futurePoint.x), y: Math.max(4, futurePoint.y) };
-  const pos = state.labelPositions[`shift-drs:${shift.id}`] || defaultPos;
-  el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
-  if (!isSnapshotReadOnlyMode()) el.addEventListener('mousedown', startDrsLabelDrag);
-  grp.appendChild(el);
 }
 
 function mkShiftedNode(source, shift) {
@@ -2843,17 +2835,116 @@ function addVariantLabel(key, variantId, text, defaultX, defaultY, mode, state) 
   tlGrid.appendChild(el);
 }
 
-function renderCanvasRemarks(state) {
-  tlGrid.querySelectorAll('.canvas-remark').forEach(e => e.remove());
-  if (!state.remarks) return;
+function splitSummaryLines(value) {
+  return String(value || '')
+    .split(/[\r\n\u2028\u2029]+/)
+    .map(line => line.trim())
+    .filter(Boolean);
+}
+
+function getRemarkSummaryItems(state) {
+  return splitSummaryLines(state && state.remarks).map(text => ({ text }));
+}
+
+function getStageContextSummaryLabel(rType) {
+  if (rType === 'plan') return 'Plan';
+  if (rType === 'branch') return 'Branch Plan';
+  if (rType === 'actual') return 'Actual';
+  if (rType === 'actualBranch') return 'Branch Actual';
+  return '';
+}
+
+function getVariantSummaryName(state, variantId) {
+  const variant = (state.variants || []).find(v => v.id === variantId);
+  return variant ? variant.name : '';
+}
+
+function getBranchSummaryName(state, rType, branchId) {
+  const branches = rType === 'actualBranch' ? (state.actualBranches || []) : (state.branches || []);
+  const branch = branches.find(b => b.id === branchId);
+  return branch ? branch.label : '';
+}
+
+function getStageSummaryName(node) {
+  return (node && (node.topLabel || node.bottomLabel || node.date || node.id)) || '';
+}
+
+function getStageSummaryLabel(state, rType, node) {
+  const owner = rType === 'plan' || rType === 'actual'
+    ? getVariantSummaryName(state, node && node.variantId)
+    : getBranchSummaryName(state, rType, node && node.branchId);
+  return [getStageContextSummaryLabel(rType), owner, getStageSummaryName(node)].filter(Boolean).join(' / ');
+}
+
+function collectDrsSummaryItems(state) {
+  const items = [];
+  [
+    ['plan', state.planNodes || []],
+    ['branch', state.branchNodes || []],
+    ['actual', state.actualNodes || []],
+    ['actualBranch', state.actualBranchNodes || []],
+  ].forEach(([rType, nodes]) => {
+    nodes.forEach(node => {
+      const text = String(node.drsDetail || '').trim();
+      if (!node.isDRS || !text) return;
+      items.push({ label: getStageSummaryLabel(state, rType, node), text });
+    });
+  });
+  (state.stageShifts || []).forEach(shift => {
+    const text = String(shift.drsDetail || '').trim();
+    if (!text) return;
+    const source = findStageByContext(state, shift.sourceContext, shift.sourceNodeId);
+    const mode = shift.mode === 'preponed' ? 'Preponed Shift' : 'Postponed Shift';
+    const label = source
+      ? [mode, getStageSummaryLabel(state, shift.sourceContext, source)].filter(Boolean).join(' / ')
+      : mode;
+    items.push({ label, text });
+  });
+  return items;
+}
+
+function makeTimelineSummaryBox(title, items, className) {
   const el = document.createElement('div');
-  el.className = 'canvas-remark';
+  el.className = `timeline-summary-box ${className}`;
+  const titleEl = document.createElement('div');
+  titleEl.className = 'timeline-summary-title';
+  titleEl.textContent = title;
+  el.appendChild(titleEl);
+  const list = document.createElement('ol');
+  list.className = 'timeline-summary-list';
+  items.forEach(item => {
+    const li = document.createElement('li');
+    li.textContent = item.label ? `${item.label}: ${item.text}` : item.text;
+    list.appendChild(li);
+  });
+  el.appendChild(list);
+  return el;
+}
+
+function renderCanvasRemarks(state) {
+  tlGrid.querySelectorAll('.remarks-summary-box').forEach(e => e.remove());
+  const items = getRemarkSummaryItems(state);
+  if (!items.length) return;
+  const el = makeTimelineSummaryBox('Remarks', items, 'canvas-remark remarks-summary-box');
   const defaultPos = getFutureActualBlankSpacePoint(state, new Date(), 18);
   const pos = state.remarkPosition || defaultPos;
   el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
-  el.textContent = state.remarks;
   if (!isSnapshotReadOnlyMode()) el.addEventListener('mousedown', startRemarkDrag);
   tlGrid.appendChild(el);
+}
+
+function renderDrsSummaryBox(grp, state) {
+  grp.querySelectorAll('.drs-summary-box').forEach(e => e.remove());
+  const items = collectDrsSummaryItems(state);
+  if (!items.length) return;
+  const el = makeTimelineSummaryBox('DRS Details', items, 'drs-summary-box');
+  el.dataset.labelKey = 'drs:summary';
+  const futurePoint = getFutureActualBlankSpacePoint(state, new Date(), -22);
+  const defaultPos = { x: Math.max(4, futurePoint.x), y: Math.max(4, futurePoint.y) };
+  const pos = (state.labelPositions || {})['drs:summary'] || defaultPos;
+  el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
+  if (!isSnapshotReadOnlyMode()) el.addEventListener('mousedown', startDrsLabelDrag);
+  grp.appendChild(el);
 }
 
 function renderMilestoneTableOverlay(state) {
@@ -3101,7 +3192,10 @@ function bindHeader() {
 
   $('remarksBox').addEventListener('input', () => {
     if (isSnapshotReadOnlyMode()) return;
-    store.getState().setRemarks($('remarksBox').textContent.trim());
+    const remarksText = ($('remarksBox').innerText || $('remarksBox').textContent || '')
+      .replace(/\r\n?/g, '\n')
+      .trim();
+    store.getState().setRemarks(remarksText);
     renderAll();
     scheduleDraftSave();
   });
