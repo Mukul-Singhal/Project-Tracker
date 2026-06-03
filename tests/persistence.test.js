@@ -12,10 +12,29 @@ function loadPersistenceFromApp() {
   assert.notEqual(start, -1, 'Could not find persistence dependency start in app.js');
   assert.notEqual(end, -1, 'Could not find persistence dependency end in app.js');
 
-  const persistenceSource = `${source.slice(start, end)}
+  const persistenceSource = `const COL = 52, ROH = 90;
+const TIMELINE_VERSION_CURRENT = 'current';
+const TIMELINE_VERSION_PREFIX = 'cutoff:';
+${source.slice(start, end)}
 module.exports = {
+  STAGE_ICONS,
   stableStringify,
   cloneState,
+  normalizeDiscussionDate,
+  getDiscussionMonth,
+  fmtDiscussionDateLabel,
+  getDiscussionCutoffEndTime,
+  normalizeDiscussionCutoffDates,
+  normalizeSubmitVersions,
+  resolveSubmitVersionForCutoff,
+  buildTimelineVersionOptions,
+  createSubmitVersionRecord,
+  mergeSubmitVersions,
+  makeTimelineVersionValue,
+  parseTimelineVersionValue,
+  getDefaultStageIconId,
+  normalizeStageIconId,
+  getStageVisualMarkup,
   normalizeStateForPersistence,
   isDirty,
   createDataversePayload,
@@ -31,6 +50,15 @@ module.exports = {
   canPlaceBranchStageAtCol: typeof canPlaceBranchStageAtCol === 'function' ? canPlaceBranchStageAtCol : undefined,
   colToInputMonth: typeof colToInputMonth === 'function' ? colToInputMonth : undefined,
   colToInputDate: typeof colToInputDate === 'function' ? colToInputDate : undefined,
+  getMovedStageDate: typeof getMovedStageDate === 'function' ? getMovedStageDate : undefined,
+  moveStageNodeToCol: typeof moveStageNodeToCol === 'function' ? moveStageNodeToCol : undefined,
+  getInputDateFromToday: typeof getInputDateFromToday === 'function' ? getInputDateFromToday : undefined,
+  getNextMonthInputMonth: typeof getNextMonthInputMonth === 'function' ? getNextMonthInputMonth : undefined,
+  isActualDateInFuture: typeof isActualDateInFuture === 'function' ? isActualDateInFuture : undefined,
+  getFutureActualBlankSpaceCol: typeof getFutureActualBlankSpaceCol === 'function' ? getFutureActualBlankSpaceCol : undefined,
+  getFutureActualBlankSpacePoint: typeof getFutureActualBlankSpacePoint === 'function' ? getFutureActualBlankSpacePoint : undefined,
+  getStageSlotRatio: typeof getStageSlotRatio === 'function' ? getStageSlotRatio : undefined,
+  getStageVisualX: typeof getStageVisualX === 'function' ? getStageVisualX : undefined,
   removeBranchNodeData,
   removeBranchData,
   removeActualBranchData: typeof removeActualBranchData === 'function' ? removeActualBranchData : undefined,
@@ -38,6 +66,8 @@ module.exports = {
   addStageShiftData,
   removeStageShiftsForNodeData,
   getMilestoneTableRows: typeof getMilestoneTableRows === 'function' ? getMilestoneTableRows : undefined,
+  getRemarkSummaryItems: typeof getRemarkSummaryItems === 'function' ? getRemarkSummaryItems : undefined,
+  collectDrsSummaryItems: typeof collectDrsSummaryItems === 'function' ? collectDrsSummaryItems : undefined,
   getDiscussionPeriodCols: typeof getDiscussionPeriodCols === 'function' ? getDiscussionPeriodCols : undefined,
   getDiscussionPeriodClass: typeof getDiscussionPeriodClass === 'function' ? getDiscussionPeriodClass : undefined,
   dateToCol: typeof dateToCol === 'function' ? dateToCol : undefined,
@@ -112,6 +142,52 @@ test('getDiscussionPeriodClass identifies highlighted discussion columns', () =>
   assert.equal(persistence.getDiscussionPeriodClass(10, state), '');
 });
 
+test('discussion period helpers accept full cutoff dates and format labels', () => {
+  assert.equal(persistence.normalizeDiscussionDate('2024-06-20'), '2024-06-20');
+  assert.equal(persistence.normalizeDiscussionDate('2024-06'), '2024-06');
+  assert.equal(persistence.normalizeDiscussionDate('06-2024'), '');
+  assert.equal(persistence.getDiscussionMonth('2024-06-20'), '2024-06');
+  assert.equal(persistence.fmtDiscussionDateLabel('2024-06-20'), '20 Jun 2024');
+  assert.equal(persistence.fmtDiscussionDateLabel('2024-06'), 'Jun 2024');
+  assert.deepEqual(toPlain(persistence.getDiscussionPeriodCols({
+    years: [2024, 2025],
+    discussionDate: '2024-06-20',
+  })), {
+    prev: 4,
+    current: 5,
+    next: 6,
+  });
+});
+
+test('cutoff snapshots resolve to the latest submit before the cutoff end of day', () => {
+  const versions = [
+    { id: 'early', submittedAt: '2024-06-01T12:00:00Z', discussionDate: '2024-06-20' },
+    { id: 'latest-before', submittedAt: '2024-06-20T12:00:00Z', discussionDate: '2024-06-20' },
+    { id: 'after-cutoff', submittedAt: '2024-06-21T12:00:00Z', discussionDate: '2024-07-27' },
+  ];
+
+  assert.equal(persistence.resolveSubmitVersionForCutoff(versions, '2024-06-20').id, 'latest-before');
+  assert.equal(persistence.resolveSubmitVersionForCutoff(versions, '2024-06-19').id, 'early');
+  assert.equal(persistence.resolveSubmitVersionForCutoff(versions, '2024-05-31'), null);
+});
+
+test('timeline version options expose current and disable cutoffs without submitted versions', () => {
+  const versions = [
+    { id: 'june-submit', submittedAt: '2024-06-20T12:00:00Z', discussionDate: '2024-06-20' },
+  ];
+
+  const options = persistence.buildTimelineVersionOptions(['2024-06-20', '2024-05-20'], versions);
+
+  assert.equal(options[0].value, 'current');
+  assert.equal(options[1].value, 'cutoff:2024-06-20');
+  assert.equal(options[1].label, '20 Jun 2024');
+  assert.equal(options[1].disabled, false);
+  assert.equal(options[1].versionId, 'june-submit');
+  assert.equal(options[2].value, 'cutoff:2024-05-20');
+  assert.equal(options[2].disabled, true);
+  assert.equal(persistence.parseTimelineVersionValue(options[1].value), '2024-06-20');
+});
+
 test('dateToCol accepts full dates by using the year and month portion', () => {
   const state = { years: [2024, 2025] };
 
@@ -128,6 +204,52 @@ test('column input date helpers return picker-friendly month and date values', (
   assert.equal(persistence.colToInputMonth(24, state), '2026-01');
   assert.equal(persistence.colToInputDate(6, state), '2024-07-01');
   assert.equal(persistence.colToInputMonth(-1, state), '');
+});
+
+test('future actual helpers reject future dates and find next-month blank space', () => {
+  const today = new Date('2026-05-29T12:00:00');
+
+  assert.equal(persistence.getInputDateFromToday(today), '2026-05-29');
+  assert.equal(persistence.getNextMonthInputMonth(today), '2026-06');
+  assert.equal(persistence.getNextMonthInputMonth(new Date('2026-12-15T12:00:00')), '2027-01');
+  assert.equal(persistence.isActualDateInFuture('2026-05-30', today), true);
+  assert.equal(persistence.isActualDateInFuture('2026-05-29', today), false);
+  assert.equal(persistence.isActualDateInFuture('2026-05-28', today), false);
+  assert.equal(persistence.getFutureActualBlankSpaceCol({ years: [2025, 2026] }, today), 17);
+  assert.equal(persistence.getFutureActualBlankSpaceCol({ years: [2025] }, today), 17);
+  assert.deepEqual(toPlain(persistence.getFutureActualBlankSpacePoint({
+    years: [2025, 2026],
+    variants: [{ id: 'v1' }],
+    branches: [],
+    actualBranches: [],
+  }, today, 18)), { x: 910, y: 157 });
+});
+
+test('stage visual x helper maps bottom labels and spreads duplicate stages', () => {
+  const state = {
+    planNodes: [
+      { id: 'beg', variantId: 'v1', col: 0, bottomLabel: 'Beg' },
+      { id: 'mid', variantId: 'v1', col: 0, bottomLabel: 'Mid' },
+      { id: 'end', variantId: 'v1', col: 0, bottomLabel: 'End' },
+      { id: 'legacy', variantId: 'v1', col: 1, bottomLabel: 'Custom' },
+      { id: 'm1', variantId: 'v2', col: 0, bottomLabel: 'Mid' },
+      { id: 'm2', variantId: 'v2', col: 0, bottomLabel: 'Mid' },
+      { id: 'm3', variantId: 'v2', col: 0, bottomLabel: 'Mid' },
+    ],
+    branchNodes: [],
+    actualNodes: [
+      { id: 'a1', variantId: 'v1', col: 2 },
+      { id: 'a2', variantId: 'v1', col: 2 },
+    ],
+    actualBranchNodes: [],
+  };
+
+  assert.equal(persistence.getStageVisualX(state.planNodes[0], 'plan', state), 14);
+  assert.equal(persistence.getStageVisualX(state.planNodes[1], 'plan', state), 26);
+  assert.equal(persistence.getStageVisualX(state.planNodes[2], 'plan', state), 38);
+  assert.equal(persistence.getStageVisualX(state.planNodes[3], 'plan', state), 78);
+  assert.deepEqual(state.planNodes.slice(4).map(n => persistence.getStageVisualX(n, 'plan', state)), [20, 26, 32]);
+  assert.deepEqual(state.actualNodes.map(n => persistence.getStageVisualX(n, 'actual', state)), [127, 133]);
 });
 
 test('createStageNodeData moves plan stages to selected month and keeps clicked month when date is blank', () => {
@@ -158,6 +280,29 @@ test('createStageNodeData moves plan stages to selected month and keeps clicked 
   assert.equal(persistence.createStageNodeData(state, 'plan', 2, { bottomLabel: 'Custom', date: '' }).node.bottomLabel, '');
 });
 
+test('stage logo configuration accepts SVG icon ids and falls back safely', () => {
+  const state = { years: [2024, 2025] };
+  const iconId = persistence.STAGE_ICONS[2].id;
+
+  assert.equal(persistence.STAGE_ICONS.length, 11);
+  assert.equal(persistence.getDefaultStageIconId(), persistence.STAGE_ICONS[0].id);
+  assert.equal(persistence.normalizeStageIconId(iconId), iconId);
+  assert.equal(persistence.normalizeStageIconId('missing-logo'), persistence.STAGE_ICONS[0].id);
+  assert.equal(persistence.normalizeStageIconId('circle'), 'circle');
+
+  const created = persistence.createStageNodeData(state, 'plan', 2, {
+    type: iconId,
+    topLabel: 'Logo',
+    bottomLabel: 'Mid',
+    date: '2024-04',
+  });
+  assert.equal(created.ok, true);
+  assert.equal(created.node.type, iconId);
+
+  const fallback = persistence.createStageNodeData(state, 'plan', 2, { type: 'missing-logo', date: '' });
+  assert.equal(fallback.node.type, persistence.STAGE_ICONS[0].id);
+});
+
 test('createStageNodeData requires actual full dates and stores actual stages in that month', () => {
   const state = { years: [2024, 2025] };
 
@@ -183,6 +328,7 @@ test('createStageNodeData requires actual full dates and stores actual stages in
   });
   assert.equal(persistence.createStageNodeData(state, 'actual', 2, { date: '' }).ok, false);
   assert.equal(persistence.createStageNodeData(state, 'actualBranch', 2, { date: '2025-04' }).ok, false);
+  assert.equal(persistence.createStageNodeData({ years: [2024, 2999] }, 'actual', 2, { date: '2999-01-01' }).reason, 'Actual date cannot be in the future.');
 });
 
 test('canPlaceBranchStageAtCol blocks branch stages before the branch start month', () => {
@@ -248,16 +394,59 @@ test('updateStageNodeData edits the correct stage collection and recalculates th
   assert.equal(actualNext.actualBranchNodes[0].bottomLabel, '');
 });
 
+test('moveStageNodeToCol updates plan stage dates to the moved month', () => {
+  const state = { years: [2024, 2025] };
+  const movedPlan = persistence.moveStageNodeToCol(
+    { id: 'p1', col: 1, date: '2024-02', bottomLabel: 'Mid' },
+    'plan',
+    14,
+    state
+  );
+  const movedBranch = persistence.moveStageNodeToCol(
+    { id: 'b1', col: 2, date: '2024-03', bottomLabel: 'End' },
+    'branch',
+    17,
+    state
+  );
+
+  assert.equal(movedPlan.col, 14);
+  assert.equal(movedPlan.date, '2025-03');
+  assert.equal(movedPlan.bottomLabel, 'Mid');
+  assert.equal(movedBranch.date, '2025-06');
+});
+
+test('moveStageNodeToCol updates actual dates while preserving or clamping the day', () => {
+  const state = { years: [2024, 2025] };
+  const movedActual = persistence.moveStageNodeToCol(
+    { id: 'a1', col: 0, date: '2024-01-27' },
+    'actual',
+    15,
+    state
+  );
+  const clampedActualBranch = persistence.moveStageNodeToCol(
+    { id: 'ab1', col: 7, date: '2024-08-31' },
+    'actualBranch',
+    13,
+    state
+  );
+
+  assert.equal(movedActual.col, 15);
+  assert.equal(movedActual.date, '2025-04-27');
+  assert.equal(clampedActualBranch.col, 13);
+  assert.equal(clampedActualBranch.date, '2025-02-28');
+});
+
 test('fmtActualDate shows actual stage dates as day and month', () => {
   assert.equal(persistence.fmtActualDate('2025-04-27'), '27 Apr');
 });
 
 test('createDataversePayload maps state into simple Dataverse entity groups', () => {
+  const iconId = persistence.STAGE_ICONS[1].id;
   const state = {
     projectId: 'local-1',
     info: { project: 'Alpha', location: 'SMG', plant: 'Plant-C', type: 'MC', status: 'Delayed', published: true },
     variants: [{ id: 'v1', name: 'DOM Gas' }],
-    planNodes: [{ id: 'p1', variantId: 'v1', col: 5, type: 'square', topLabel: 'DA', bottomLabel: '', date: '2024-06', isDRS: true, drsDetail: 'DRS file available in SharePoint' }],
+    planNodes: [{ id: 'p1', variantId: 'v1', col: 5, type: iconId, topLabel: 'DA', bottomLabel: '', date: '2024-06', isDRS: true, drsDetail: 'DRS file available in SharePoint' }],
     actualNodes: [],
     branches: [{ id: 'b1', variantId: 'v1', parentNodeId: 'p1', label: 'Gas branch' }],
     branchNodes: [{ id: 'bp1', branchId: 'b1', col: 6, type: 'circle', topLabel: 'Trial', bottomLabel: '', date: '2024-07' }],
@@ -281,9 +470,11 @@ test('createDataversePayload maps state into simple Dataverse entity groups', ()
   assert.deepEqual(toPlain(payload.variants), [{ external_id: 'v1', name: 'DOM Gas', display_order: 0 }]);
   assert.equal(payload.stages.length, 2);
   assert.equal(payload.stages[0].stage_context, 'plan');
+  assert.equal(payload.stages[0].shape, iconId);
   assert.equal(payload.stages[0].is_drs, true);
   assert.equal(payload.stages[0].drs_detail, 'DRS file available in SharePoint');
   assert.equal(payload.stages[1].stage_context, 'branch_plan');
+  assert.equal(payload.stages[1].shape, 'circle');
   assert.deepEqual(toPlain(payload.mergeLinks), [{
     external_id: 'm1',
     merge_context: 'plan',
@@ -320,6 +511,65 @@ test('createDataversePayload includes discussion period date', () => {
   assert.equal(payload.project.discussion_period_date, '2024-09');
 });
 
+test('createDataversePayload includes full discussion cutoff dates', () => {
+  const payload = persistence.createDataversePayload({
+    projectId: 'local-1',
+    info: { project: 'Alpha' },
+    variants: [],
+    planNodes: [],
+    actualNodes: [],
+    branches: [],
+    branchNodes: [],
+    actualBranchNodes: [],
+    mergeLinks: [],
+    stageShifts: [],
+    leftTable: { cols: [], rows: [] },
+    rightTable: { cols: [], rows: [] },
+    years: [2024, 2025],
+    eopDate: '',
+    eopItems: [],
+    discussionDate: '2024-06-20',
+  });
+
+  assert.equal(payload.project.discussion_period_date, '2024-06-20');
+});
+
+test('createSubmitVersionRecord preserves submitted state and Dataverse payload', () => {
+  const state = {
+    projectId: 'local-1',
+    info: { project: 'Alpha', published: true },
+    variants: [{ id: 'v1', name: 'DOM Gas' }],
+    planNodes: [{ id: 'p1', variantId: 'v1', col: 5, type: persistence.STAGE_ICONS[0].id, topLabel: 'DA', date: '2024-06' }],
+    actualNodes: [],
+    branches: [],
+    branchNodes: [],
+    actualBranchNodes: [],
+    mergeLinks: [],
+    stageShifts: [],
+    leftTable: { cols: [], rows: [] },
+    rightTable: { cols: [], rows: [] },
+    years: [2024, 2025],
+    eopDate: '',
+    eopItems: [],
+    discussionDate: '2024-06-20',
+  };
+  const payload = persistence.createDataversePayload(state);
+  const version = persistence.createSubmitVersionRecord(state, payload, '2024-06-20T12:00:00Z', 'submit-june');
+
+  assert.equal(version.id, 'submit-june');
+  assert.equal(version.submittedAt, '2024-06-20T12:00:00Z');
+  assert.equal(version.discussionDate, '2024-06-20');
+  assert.equal(version.state.planNodes[0].id, 'p1');
+  assert.equal(version.payload.project.discussion_period_date, '2024-06-20');
+});
+
+test('mergeSubmitVersions accepts immutable submit versions and replaces by id', () => {
+  const existing = [{ id: 'same', submittedAt: '2024-06-01T12:00:00Z', discussionDate: '2024-06-20', state: { value: 1 } }];
+  const next = { id: 'same', submittedAt: '2024-06-02T12:00:00Z', discussionDate: '2024-06-20', state: { value: 2 } };
+
+  assert.deepEqual(toPlain(persistence.mergeSubmitVersions(existing, next)), [next]);
+});
+
 test('parseEopItems returns ordered EOP markers from multiple table rows', () => {
   const state = {
     years: [2024, 2025],
@@ -336,6 +586,42 @@ test('parseEopItems returns ordered EOP markers from multiple table rows', () =>
     { id: 'eop-0-1', label: 'DOM Gas', date: '2024-12', col: 11, rowIndex: 0, colIndex: 1 },
     { id: 'eop-1-1', label: 'DOM CNG', date: '2025-01', col: 12, rowIndex: 1, colIndex: 1 },
     { id: 'eop-1-2', label: 'DOM CNG', date: '2025-02', col: 13, rowIndex: 1, colIndex: 2 },
+  ]);
+});
+
+test('parseEopItems defaults detail-only EOP rows to the month after today', () => {
+  const state = {
+    years: [2026],
+    rightTable: {
+      cols: ['Model Detail', 'Date- month/year'],
+      rows: [
+        ['DOM Gas', ''],
+        ['DOM CNG', ''],
+      ],
+    },
+  };
+
+  assert.deepEqual(toPlain(persistence.parseEopItems(state, new Date('2026-05-29T00:00:00'))), [
+    { id: 'eop-0-inferred', label: 'DOM Gas', date: '2026-06', col: 5, rowIndex: 0, colIndex: 1 },
+    { id: 'eop-1-inferred', label: 'DOM CNG', date: '2026-06', col: 5, rowIndex: 1, colIndex: 1 },
+  ]);
+});
+
+test('parseEopItems keeps dated EOP rows preferred over inferred dates', () => {
+  const state = {
+    years: [2026],
+    rightTable: {
+      cols: ['Model Detail', 'Date- month/year'],
+      rows: [
+        ['DOM Gas', '2026-04'],
+        ['DOM CNG', ''],
+      ],
+    },
+  };
+
+  assert.deepEqual(toPlain(persistence.parseEopItems(state, new Date('2026-05-29T00:00:00'))), [
+    { id: 'eop-0-1', label: 'DOM Gas', date: '2026-04', col: 3, rowIndex: 0, colIndex: 1 },
+    { id: 'eop-1-inferred', label: 'DOM CNG', date: '2026-06', col: 5, rowIndex: 1, colIndex: 1 },
   ]);
 });
 
@@ -712,6 +998,35 @@ test('branch start connector stays aligned to the source month column', () => {
   assert.doesNotMatch(fn, /elbowX|routeOffset|getBranchStartRouteOffset/);
 });
 
+test('timeline rendering uses visual stage x positions and source-anchored branch labels', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const style = fs.readFileSync(path.join(__dirname, '..', 'style.css'), 'utf8');
+
+  assert.match(source, /function getStageVisualX/);
+  assert.match(source, /const x = getStageVisualX\(n, 'plan', state\)/);
+  assert.match(source, /const x = getStageVisualX\(n, 'branch', state\)/);
+  assert.match(source, /const x = getStageVisualX\(n, 'actual', state\)/);
+  assert.match(source, /const x = getStageVisualX\(n, 'actualBranch', state\)/);
+  assert.match(source, /return \{ x: getStageVisualX\(node, 'plan', state\)/);
+  assert.match(source, /const sourceCol = getBranchStartCol\(state, rType, branchId\)/);
+  assert.match(source, /const sourceX = sourceCol \* COL \+ COL \/ 2/);
+  assert.match(source, /pill\.style\.left = `\$\{leftOfLine >= 4 \? leftOfLine : sourceX \+ 10\}px`/);
+  assert.match(style, /\.sr-cell\.proj\s*\{[^}]*align-items:\s*center[^}]*justify-content:\s*center[^}]*text-align:\s*center/s);
+});
+
+test('future actual blank-space defaults are used for labels and table overlays', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+
+  assert.match(source, /function getFutureActualBlankSpacePoint/);
+  assert.match(source, /s = ensureFutureActualBlankSpaceVisible\(s\)/);
+  assert.match(source, /const futurePoint = getFutureActualBlankSpacePoint\(state, new Date\(\), -22\)/);
+  assert.match(source, /const defaultPos = getFutureActualBlankSpacePoint\(state, new Date\(\), 18\)/);
+  assert.match(source, /const defaultPos = getFutureActualBlankSpacePoint\(state, new Date\(\), 44\)/);
+  assert.match(source, /\(state\.labelPositions \|\| \{\}\)\['drs:summary'\] \|\| defaultPos/);
+  assert.match(source, /state\.remarkPosition \|\| defaultPos/);
+  assert.match(source, /state\.labelPositions\['milestone:table'\] \|\| defaultPos/);
+});
+
 test('merge back connector is a plain orthogonal line without an arrow marker', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
   const start = source.indexOf('function addMergeBackPath');
@@ -785,6 +1100,21 @@ test('stage nodes do not render the old DRS badge markup', () => {
   assert.equal(source.includes('node-drs-badge'), false);
 });
 
+test('stage nodes use configurable SVG logo rendering with legacy fallback', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const markup = persistence.getStageVisualMarkup(persistence.STAGE_ICONS[0].id, 'test-node');
+  const legacyMarkup = persistence.getStageVisualMarkup('square', 'legacy-node');
+
+  assert.match(source, /const STAGE_ICONS = \[/);
+  assert.match(source, /function setupStageIconPicker/);
+  assert.match(source, /getStageVisualMarkup\(n\.type, `node-\$\{n\.id\}`\)/);
+  assert.match(source, /getStageVisualMarkup\(source\.type, `shift-\$\{shift\.id\}`\)/);
+  assert.match(markup, /<svg/);
+  assert.match(markup, /stage-icon-node/);
+  assert.match(markup, /paint0_linear_526_2297-test-node/);
+  assert.match(legacyMarkup, /legacy-node-shape square/);
+});
+
 test('canAddStageShift validates preponed before and postponed after the source stage', () => {
   const node = { id: 'p1', col: 6 };
 
@@ -820,37 +1150,50 @@ test('addStageShiftData allows multiple shifts for one source stage', () => {
   ]);
 });
 
-test('stage shift modal requires DRS detail and shifted DRS labels use shift-specific positions', () => {
+test('stage shift modal requires DRS detail and shifted DRS details feed the summary box', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 
   assert.match(source, /id="f_shift_drs_detail"/);
   assert.match(source, /const drsDetail = \$\('f_shift_drs_detail'\)\.value\.trim\(\)/);
   assert.match(source, /Enter DRS Details for the shifted stage\./);
   assert.match(source, /drsDetail,/);
-  assert.match(source, /function addShiftDrsDetailLabel/);
-  assert.match(source, /shift-drs:\$\{shift\.id\}/);
+  assert.match(source, /state\.stageShifts \|\| \[\]/);
+  assert.match(source, /const source = findStageByContext\(state, shift\.sourceContext, shift\.sourceNodeId\)/);
+  assert.match(source, /Preponed Shift/);
+  assert.match(source, /Postponed Shift/);
 });
 
-test('grid DRS and remark labels wrap full text instead of truncating it', () => {
+test('timeline summary boxes wrap full text instead of truncating it', () => {
   const style = fs.readFileSync(path.join(__dirname, '..', 'style.css'), 'utf8');
-  const drsStart = style.indexOf('.drs-detail-label');
-  const drsEnd = style.indexOf('[data-theme="dark"] .eop-label');
-  const remarkStart = style.indexOf('.canvas-remark');
-  const remarkEnd = style.indexOf('[data-theme="dark"] .canvas-remark');
+  const summaryStart = style.indexOf('.timeline-summary-box');
+  const summaryEnd = style.indexOf('/* ── MILESTONE TABLE OVERLAY');
+  const drsStart = style.indexOf('.drs-summary-box');
 
+  assert.notEqual(summaryStart, -1);
+  assert.notEqual(summaryEnd, -1);
   assert.notEqual(drsStart, -1);
-  assert.notEqual(drsEnd, -1);
-  assert.notEqual(remarkStart, -1);
-  assert.notEqual(remarkEnd, -1);
-  const drsCss = style.slice(drsStart, drsEnd);
-  const remarkCss = style.slice(remarkStart, remarkEnd);
+  const summaryCss = style.slice(summaryStart, summaryEnd);
 
-  assert.match(drsCss, /white-space:\s*normal/);
-  assert.match(drsCss, /overflow-wrap:\s*anywhere/);
-  assert.doesNotMatch(drsCss, /text-overflow:\s*ellipsis/);
-  assert.doesNotMatch(drsCss, /overflow:\s*hidden/);
-  assert.match(remarkCss, /white-space:\s*normal/);
-  assert.match(remarkCss, /overflow-wrap:\s*anywhere/);
+  assert.match(summaryCss, /white-space:\s*normal/);
+  assert.match(summaryCss, /overflow-wrap:\s*anywhere/);
+  assert.match(summaryCss, /\.timeline-summary-list li/);
+  assert.match(summaryCss, /\.drs-summary-box/);
+  assert.doesNotMatch(summaryCss, /text-overflow:\s*ellipsis/);
+  assert.doesNotMatch(summaryCss, /overflow:\s*hidden/);
+});
+
+test('remarks and DRS details render as cumulative numbered summary boxes', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+
+  assert.match(source, /function getRemarkSummaryItems/);
+  assert.match(source, /function collectDrsSummaryItems/);
+  assert.match(source, /function makeTimelineSummaryBox/);
+  assert.match(source, /makeTimelineSummaryBox\('Remarks'/);
+  assert.match(source, /makeTimelineSummaryBox\('DRS Details'/);
+  assert.match(source, /\(state\.labelPositions \|\| \{\}\)\['drs:summary'\]/);
+  assert.match(source, /renderDrsSummaryBox\(grp, state\)/);
+  assert.doesNotMatch(source, /addDrsDetailLabel\(grp/);
+  assert.doesNotMatch(source, /addShiftDrsDetailLabel\(grp/);
 });
 
 test('branch row cells before the branch start are disabled and placement is validated in UI paths', () => {
@@ -917,6 +1260,44 @@ test('stage popup uses Plan bottom label options and switches date input type by
   assert.match(source, /\$\('npDate'\)\.type = isActualStageContext\(rType\) \? 'date' : 'month'/);
   assert.match(source, /\$\('npDate'\)\.value = isActualStageContext\(rType\) \? colToInputDate\(col, state\) : colToInputMonth\(col, state\)/);
   assert.match(source, /Enter the actual date\./);
+});
+
+test('EOP table columns are locked in the UI', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+
+  assert.match(html, /id="addEopColBtn" hidden disabled/);
+  assert.match(source, /renderDynTable\('eopTableWrap', state\.rightTable,[\s\S]*\{ allowColumnEdit: false, allowColumnDelete: false, readOnly \}\)/);
+  assert.match(source, /sp\.contentEditable = allowColumnEdit \? 'true' : 'false'/);
+  assert.match(source, /if \(allowColumnDelete && ci > 0\)/);
+  assert.match(source, /addEopColBtn\.hidden = true/);
+  assert.match(source, /addEopColBtn\.disabled = true/);
+  assert.doesNotMatch(source, /\$\('addEopColBtn'\)\.addEventListener\('click', \(\) => \{ store\.getState\(\)\.addRightTableCol/);
+});
+
+test('timeline version dropdown and snapshot read-only path are wired', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+
+  assert.match(html, /<label for="timelineVersionSelect">Timeline Version<\/label>/);
+  assert.match(html, /<select id="timelineVersionSelect"/);
+  assert.match(source, /function isSnapshotReadOnlyMode/);
+  assert.match(source, /function getTimelineRenderState/);
+  assert.match(source, /let snapshotView = \{ selected: TIMELINE_VERSION_CURRENT, state: null/);
+  assert.match(source, /if \(!isSnapshotReadOnlyMode\(\)\) s = ensureFutureActualBlankSpaceVisible\(s\)/);
+  assert.match(source, /updateSnapshotReadOnlyUi/);
+  assert.match(source, /'copyActualBtn', 'addYearBtn', 'addMsRowBtn', 'addMsColBtn'/);
+  assert.match(source, /submitBtn\.disabled = isSnapshotReadOnlyMode\(\)/);
+});
+
+test('Dataverse bridge includes submit-version history contract', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+
+  assert.match(source, /loadProject\(\{ projectId \}\)/);
+  assert.match(source, /getSubmitVersion\(\{/);
+  assert.match(source, /saveProject\(\{[\s\S]*submitVersion,[\s\S]*submittedVersion: submitVersion/);
+  assert.match(source, /writeLocalJson\(keys\.submitVersions, submitVersions\)/);
+  assert.match(source, /writeLocalJson\(keys\.discussionCutoffs, discussionCutoffDates\)/);
 });
 
 test('merge and shift modals set date picker bounds from the source stage month', () => {

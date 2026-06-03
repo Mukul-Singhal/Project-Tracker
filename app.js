@@ -6,9 +6,10 @@ const COL = 52, ROH = 90, YH = 34, MH = 30;
 const PDF_EXPORT_HORIZONTAL_SCALE = 0.8;
 const SHIFT_ARROW_ARCH = 46;
 const $ = id => document.getElementById(id);
-const NODE_SHAPES = [{ value: 'square', label: 'Square' }, { value: 'circle', label: 'Circle' }];
 const STORAGE_PREFIX = 'project-tracker';
 const ACTIVE_PROJECT_KEY = `${STORAGE_PREFIX}:activeProjectId`;
+const TIMELINE_VERSION_CURRENT = 'current';
+const TIMELINE_VERSION_PREFIX = 'cutoff:';
 
 const fmtDate = d => {
   if (!d) return '';
@@ -20,6 +21,227 @@ function cloneState(v) {
   return JSON.parse(JSON.stringify(v));
 }
 
+const STAGE_ICONS = [
+  {
+    id: 'stage-logo-1',
+    label: 'Stage Logo 1',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="4" y="4" width="37" height="37" rx="18.5" stroke="url(#paint0_linear_526_2297)" stroke-width="2"/>
+<path d="M35.6036 33.6936C36.3388 34.4287 36.0024 35.6841 34.9981 35.9532C34.5321 36.078 34.0348 35.9448 33.6936 35.6036L22.5 24.4083L11.3064 35.6036C10.5713 36.3388 9.31594 36.0024 9.04685 34.9981C8.92197 34.5321 9.05522 34.0348 9.39641 33.6936L20.5917 22.5L9.39641 11.3064C8.66124 10.5713 8.9976 9.31594 10.0019 9.04685C10.4679 8.92197 10.9652 9.05522 11.3064 9.39641L22.5 20.5917L33.6936 9.39641C34.4287 8.66124 35.6841 8.9976 35.9532 10.0019C36.078 10.4679 35.9448 10.9652 35.6036 11.3064L24.4083 22.5L35.6036 33.6936Z" fill="url(#paint1_linear_526_2297)"/>
+<defs>
+<linearGradient id="paint0_linear_526_2297" x1="-6.26733" y1="3.75685" x2="-5.20509" y2="48.128" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint1_linear_526_2297" x1="2.58416" y1="9.52397" x2="3.31955" y2="40.2425" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+</defs>
+</svg>`,
+  },
+  {
+    id: 'stage-logo-2',
+    label: 'Stage Logo 2',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="4" y="4" width="37" height="37" rx="18.5" stroke="url(#paint0_linear_526_2287)" stroke-width="2"/>
+<mask id="path-2-inside-1_526_2287" fill="white">
+<path d="M15 15H31V31H15V15Z"/>
+</mask>
+<path d="M31 15H33V13H31V15ZM31 31V33H33V31H31ZM15 15V17H31V15V13H15V15ZM31 15H29V31H31H33V15H31ZM31 31V29H15V31V33H31V31Z" fill="url(#paint1_linear_526_2287)" mask="url(#path-2-inside-1_526_2287)"/>
+<defs>
+<linearGradient id="paint0_linear_526_2287" x1="-6.26733" y1="3.75685" x2="-5.20509" y2="48.128" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint1_linear_526_2287" x1="11.198" y1="15.3105" x2="11.6338" y2="33.5141" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+</defs>
+</svg>`,
+  },
+  {
+    id: 'stage-logo-3',
+    label: 'Stage Logo 3',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="4" y="4" width="37" height="37" rx="18.5" stroke="url(#paint0_linear_527_2382)" stroke-width="2"/>
+<path d="M16 14H26.2667C26.819 14 27.2667 14.4477 27.2667 15V19.0198C27.2667 19.2647 27.1768 19.5011 27.0141 19.6842L16.8667 31.1L22.3432 25.4128C22.6834 25.0595 23.2298 25.0032 23.6189 25.3017C25.485 26.7333 28.3885 29.46 29 32" stroke="url(#paint1_linear_527_2382)" stroke-width="2"/>
+<defs>
+<linearGradient id="paint0_linear_527_2382" x1="-6.26733" y1="3.75685" x2="-5.20509" y2="48.128" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint1_linear_527_2382" x1="12.9109" y1="14.3493" x2="13.5894" y2="34.8176" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+</defs>
+</svg>`,
+  },
+  {
+    id: 'stage-logo-4',
+    label: 'Stage Logo 4',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_527_2305)">
+<path d="M33.2386 18H30.0682C29.8807 17.0881 29.5526 16.2869 29.0838 15.5966C28.6236 14.9062 28.0611 14.3267 27.3963 13.858C26.7401 13.3807 26.0114 13.0227 25.2102 12.7841C24.4091 12.5455 23.5739 12.4261 22.7045 12.4261C21.1193 12.4261 19.6832 12.8267 18.3963 13.6278C17.1179 14.429 16.0994 15.6094 15.3409 17.169C14.5909 18.7287 14.2159 20.642 14.2159 22.9091C14.2159 25.1761 14.5909 27.0895 15.3409 28.6491C16.0994 30.2088 17.1179 31.3892 18.3963 32.1903C19.6832 32.9915 21.1193 33.392 22.7045 33.392C23.5739 33.392 24.4091 33.2727 25.2102 33.0341C26.0114 32.7955 26.7401 32.4418 27.3963 31.973C28.0611 31.4957 28.6236 30.9119 29.0838 30.2216C29.5526 29.5227 29.8807 28.7216 30.0682 27.8182H33.2386C33 29.1562 32.5653 30.3537 31.9347 31.4105C31.304 32.4673 30.5199 33.3665 29.5824 34.108C28.6449 34.8409 27.5923 35.3991 26.4247 35.7827C25.2656 36.1662 24.0256 36.358 22.7045 36.358C20.4716 36.358 18.4858 35.8125 16.7472 34.7216C15.0085 33.6307 13.6406 32.0795 12.6435 30.0682C11.6463 28.0568 11.1477 25.6705 11.1477 22.9091C11.1477 20.1477 11.6463 17.7614 12.6435 15.75C13.6406 13.7386 15.0085 12.1875 16.7472 11.0966C18.4858 10.0057 20.4716 9.46023 22.7045 9.46023C24.0256 9.46023 25.2656 9.65199 26.4247 10.0355C27.5923 10.419 28.6449 10.9815 29.5824 11.723C30.5199 12.456 31.304 13.3509 31.9347 14.4077C32.5653 15.456 33 16.6534 33.2386 18Z" fill="url(#paint0_linear_527_2305)"/>
+</g>
+<rect x="4" y="4" width="37" height="37" rx="18.5" stroke="url(#paint1_linear_527_2305)" stroke-width="2"/>
+<defs>
+<linearGradient id="paint0_linear_527_2305" x1="2.58416" y1="1.85388" x2="4.53529" y2="51.8662" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint1_linear_527_2305" x1="-6.26733" y1="3.75685" x2="-5.20509" y2="48.128" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<clipPath id="clip0_527_2305">
+<rect x="3" y="3" width="39" height="39" rx="19.5" fill="white"/>
+</clipPath>
+</defs>
+</svg>`,
+  },
+  {
+    id: 'stage-logo-5',
+    label: 'Stage Logo 5',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="6" y="7" width="33" height="19" rx="1" stroke="url(#paint0_linear_527_2309)" stroke-width="2"/>
+<path d="M6 26C10.6406 19.963 23.7375 11.5112 39 26H6Z" fill="url(#paint1_linear_527_2309)"/>
+<path d="M30 8L30 17" stroke="#416AFD" stroke-width="2" stroke-linecap="round"/>
+<path d="M25 8L25 13" stroke="#416AFD" stroke-width="2" stroke-linecap="round"/>
+<path d="M14 14.6849V7.5C14 7.22386 14.2239 7 14.5 7H19.5C19.7761 7 20 7.22386 20 7.5V14.2834C20 14.7211 19.4774 14.9475 19.158 14.6482L17.3746 12.9762C17.1693 12.7837 16.8458 12.7985 16.6589 13.0087L14.8737 15.0171C14.5683 15.3607 14 15.1447 14 14.6849Z" fill="#416AFD"/>
+<path d="M30.2383 35.25H14.7617L22.5 26.5088L30.2383 35.25Z" stroke="#092C95" stroke-width="2"/>
+<defs>
+<linearGradient id="paint0_linear_527_2309" x1="-3.31683" y1="6.40753" x2="-2.97352" y2="30.3085" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint1_linear_527_2309" x1="-1.84158" y1="18.1553" x2="-1.78873" y2="27.2619" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+</defs>
+</svg>`,
+  },
+  {
+    id: 'stage-logo-6',
+    label: 'Stage Logo 6',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="6" y="7" width="33" height="19" rx="1" stroke="url(#paint0_linear_527_2330)" stroke-width="2"/>
+<path d="M30.2383 35.25H14.7617L22.5 26.5088L30.2383 35.25Z" stroke="#092C95" stroke-width="2"/>
+<defs>
+<linearGradient id="paint0_linear_527_2330" x1="-3.31683" y1="6.40753" x2="-2.97352" y2="30.3085" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+</defs>
+</svg>`,
+  },
+  {
+    id: 'stage-logo-7',
+    label: 'Stage Logo 7',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_527_2338)">
+<path d="M42.9521 40H3.04785L23 4.06055L42.9521 40Z" stroke="#092C95" stroke-width="2"/>
+<path d="M29.1074 31.25H16.8926L23 20.084L29.1074 31.25Z" stroke="#092C95" stroke-width="2"/>
+</g>
+<defs>
+<clipPath id="clip0_527_2338">
+<rect width="45" height="45" fill="white"/>
+</clipPath>
+</defs>
+</svg>`,
+  },
+  {
+    id: 'stage-logo-8',
+    label: 'Stage Logo 8',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="6" y="10" width="33" height="25" rx="1" stroke="url(#paint0_linear_527_2346)" stroke-width="2"/>
+<rect x="15" y="17" width="16" height="12" rx="1" stroke="url(#paint1_linear_527_2346)" stroke-width="2"/>
+<defs>
+<linearGradient id="paint0_linear_527_2346" x1="-3.31683" y1="9.52397" x2="-2.7494" y2="40.2496" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint1_linear_527_2346" x1="9.72277" y1="16.2717" x2="10.0194" y2="32.2034" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+</defs>
+</svg>`,
+  },
+  {
+    id: 'stage-logo-9',
+    label: 'Stage Logo 9',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_527_2360)">
+<rect x="3.85" y="3.85" width="29.3" height="29.3" rx="14.65" stroke="url(#paint0_linear_527_2360)" stroke-width="1.7"/>
+<rect x="7.85" y="7.85" width="21.3" height="21.3" rx="10.65" stroke="url(#paint1_linear_527_2360)" stroke-width="1.7"/>
+<rect x="12.85" y="12.85" width="11.3" height="11.3" rx="5.65" stroke="url(#paint2_linear_527_2360)" stroke-width="1.7"/>
+<path d="M32.0256 44V27.2727H37.6776C38.9898 27.2727 40.0625 27.5096 40.8956 27.9833C41.7341 28.4516 42.3549 29.0859 42.7578 29.8864C43.1607 30.6868 43.3622 31.5798 43.3622 32.5653C43.3622 33.5509 43.1607 34.4466 42.7578 35.2525C42.3603 36.0584 41.745 36.7009 40.9119 37.18C40.0788 37.6538 39.0116 37.8906 37.7102 37.8906H33.6591V36.0938H37.6449C38.5433 36.0938 39.2648 35.9386 39.8093 35.6282C40.3538 35.3178 40.7486 34.8986 40.9936 34.3704C41.2441 33.8368 41.3693 33.2351 41.3693 32.5653C41.3693 31.8956 41.2441 31.2966 40.9936 30.7685C40.7486 30.2403 40.3511 29.8265 39.8011 29.527C39.2512 29.2221 38.5215 29.0696 37.6122 29.0696H34.0511V44H32.0256Z" fill="url(#paint3_linear_527_2360)"/>
+</g>
+<defs>
+<linearGradient id="paint0_linear_527_2360" x1="-4.36634" y1="3.6016" x2="-3.522" y2="38.871" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint1_linear_527_2360" x1="1.53465" y1="7.44635" x2="2.1611" y2="33.614" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint2_linear_527_2360" x1="8.91089" y1="12.2523" x2="9.26497" y2="27.0427" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint3_linear_527_2360" x1="26.4356" y1="22.5434" x2="27.8572" y2="54.3543" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<clipPath id="clip0_527_2360">
+<rect width="45" height="45" fill="white"/>
+</clipPath>
+</defs>
+</svg>`,
+  },
+  {
+    id: 'stage-logo-10',
+    label: 'Stage Logo 10',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="4" y="4" width="37" height="37" rx="18.5" stroke="url(#paint0_linear_526_2290)" stroke-width="2"/>
+<path d="M16 14H26.2667C26.819 14 27.2667 14.4477 27.2667 15V19.0198C27.2667 19.2647 27.1768 19.5011 27.0141 19.6842L16.8667 31.1L22.3432 25.4128C22.6834 25.0595 23.2298 25.0032 23.6189 25.3017C25.485 26.7333 28.3885 29.46 29 32" stroke="url(#paint1_linear_526_2290)" stroke-width="2"/>
+<defs>
+<linearGradient id="paint0_linear_526_2290" x1="-6.26733" y1="3.75685" x2="-5.20509" y2="48.128" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint1_linear_526_2290" x1="12.9109" y1="14.3493" x2="13.5894" y2="34.8176" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+</defs>
+</svg>`,
+  },
+  {
+    id: 'stage-logo-11',
+    label: 'Stage Logo 11',
+    svg: `<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="4" y="4" width="37" height="37" rx="18.5" stroke="url(#paint0_linear_527_2378)" stroke-width="2"/>
+<path d="M16 14H26.2667C26.819 14 27.2667 14.4477 27.2667 15V19.0198C27.2667 19.2647 27.1768 19.5011 27.0141 19.6842L16.8667 31.1L22.3432 25.4128C22.6834 25.0595 23.2298 25.0032 23.6189 25.3017C25.485 26.7333 28.3885 29.46 29 32" stroke="url(#paint1_linear_527_2378)" stroke-width="2"/>
+<defs>
+<linearGradient id="paint0_linear_527_2378" x1="-6.26733" y1="3.75685" x2="-5.20509" y2="48.128" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+<linearGradient id="paint1_linear_527_2378" x1="12.9109" y1="14.3493" x2="13.5894" y2="34.8176" gradientUnits="userSpaceOnUse">
+<stop stop-color="#436BFF"/>
+<stop offset="1" stop-color="#002284"/>
+</linearGradient>
+</defs>
+</svg>`,
+  },
+];
+
 const PLAN_BOTTOM_LABELS = ['Beg', 'Mid', 'End'];
 
 function fmtActualDate(d) {
@@ -30,6 +252,137 @@ function fmtActualDate(d) {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   if (!months[month - 1]) return '';
   return match[3] ? `${Number(match[3])} ${months[month - 1]}` : `${months[month - 1]} ${match[1]}`;
+}
+
+function normalizeDiscussionDate(value) {
+  const raw = String(value || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  if (/^\d{4}-\d{2}$/.test(raw)) return raw;
+  return '';
+}
+
+function getDiscussionMonth(value) {
+  const date = normalizeDiscussionDate(value);
+  return date.length >= 7 ? date.slice(0, 7) : '';
+}
+
+function fmtDiscussionDateLabel(value) {
+  const date = normalizeDiscussionDate(value);
+  if (!date) return '';
+  const match = date.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/);
+  if (!match) return date;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = months[Number(match[2]) - 1];
+  if (!month) return date;
+  return match[3] ? `${Number(match[3])} ${month} ${match[1]}` : `${month} ${match[1]}`;
+}
+
+function getDiscussionCutoffEndTime(value) {
+  const date = normalizeDiscussionDate(value);
+  const match = date.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/);
+  if (!match) return NaN;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = match[3] ? Number(match[3]) : new Date(year, month, 0).getDate();
+  const end = new Date(year, month - 1, day, 23, 59, 59, 999);
+  return end.getTime();
+}
+
+function getSubmitVersionTime(version) {
+  const time = Date.parse(version && version.submittedAt);
+  return Number.isFinite(time) ? time : NaN;
+}
+
+function makeTimelineVersionValue(cutoffDate) {
+  return TIMELINE_VERSION_PREFIX + normalizeDiscussionDate(cutoffDate);
+}
+
+function parseTimelineVersionValue(value) {
+  const raw = String(value || '');
+  return raw.startsWith(TIMELINE_VERSION_PREFIX)
+    ? normalizeDiscussionDate(raw.slice(TIMELINE_VERSION_PREFIX.length))
+    : '';
+}
+
+function normalizeDiscussionCutoffDates(values) {
+  const list = Array.isArray(values) ? values : [];
+  return [...new Set(list
+    .map(item => normalizeDiscussionDate(typeof item === 'string' ? item : item && (item.date || item.discussionDate || item.cutoffDate)))
+    .filter(Boolean))]
+    .sort((a, b) => getDiscussionCutoffEndTime(b) - getDiscussionCutoffEndTime(a));
+}
+
+function makeSubmitVersionId(submittedAt, projectId) {
+  const time = Date.parse(submittedAt);
+  const safeTime = Number.isFinite(time) ? time : Date.now();
+  const suffix = String(projectId || 'local').replace(/[^a-zA-Z0-9_-]/g, '-');
+  return `submit-${safeTime}-${suffix}`;
+}
+
+function normalizeSubmitVersion(version) {
+  if (!version || typeof version !== 'object') return null;
+  const copy = cloneState(version);
+  const submittedAt = String(copy.submittedAt || '').trim();
+  if (!submittedAt || !Number.isFinite(Date.parse(submittedAt))) return null;
+  copy.id = String(copy.id || makeSubmitVersionId(submittedAt, copy.projectId)).trim();
+  copy.submittedAt = submittedAt;
+  copy.discussionDate = normalizeDiscussionDate(copy.discussionDate || (copy.state && copy.state.discussionDate));
+  return copy;
+}
+
+function normalizeSubmitVersions(versions) {
+  return (Array.isArray(versions) ? versions : [])
+    .map(normalizeSubmitVersion)
+    .filter(Boolean)
+    .sort((a, b) => getSubmitVersionTime(b) - getSubmitVersionTime(a) || String(b.id).localeCompare(String(a.id)));
+}
+
+function resolveSubmitVersionForCutoff(versions, cutoffDate) {
+  const cutoffEnd = getDiscussionCutoffEndTime(cutoffDate);
+  if (!Number.isFinite(cutoffEnd)) return null;
+  return normalizeSubmitVersions(versions)
+    .filter(version => getSubmitVersionTime(version) <= cutoffEnd)
+    .sort((a, b) => getSubmitVersionTime(b) - getSubmitVersionTime(a) || String(b.id).localeCompare(String(a.id)))[0] || null;
+}
+
+function buildTimelineVersionOptions(cutoffDates, versions) {
+  const dates = normalizeDiscussionCutoffDates(cutoffDates);
+  return [
+    { value: TIMELINE_VERSION_CURRENT, type: 'current', label: 'Current', disabled: false },
+    ...dates.map(cutoffDate => {
+      const version = resolveSubmitVersionForCutoff(versions, cutoffDate);
+      return {
+        value: makeTimelineVersionValue(cutoffDate),
+        type: 'snapshot',
+        cutoffDate,
+        label: fmtDiscussionDateLabel(cutoffDate),
+        disabled: !version,
+        versionId: version ? version.id : '',
+        submittedAt: version ? version.submittedAt : '',
+      };
+    }),
+  ];
+}
+
+function createSubmitVersionRecord(state, payload, submittedAt = new Date().toISOString(), id) {
+  const persistedState = normalizeStateForPersistence(state);
+  return {
+    id: id || makeSubmitVersionId(submittedAt, persistedState.projectId),
+    projectId: persistedState.projectId || '',
+    submittedAt,
+    discussionDate: normalizeDiscussionDate(persistedState.discussionDate),
+    state: persistedState,
+    payload: payload ? cloneState(payload) : createDataversePayload(persistedState),
+  };
+}
+
+function mergeSubmitVersions(existing, incoming) {
+  const versions = normalizeSubmitVersions(existing);
+  const next = normalizeSubmitVersion(incoming);
+  if (!next) return versions;
+  const byId = new Map(versions.map(version => [version.id, version]));
+  byId.set(next.id, next);
+  return normalizeSubmitVersions([...byId.values()]);
 }
 
 function stableStringify(value) {
@@ -49,6 +402,44 @@ function escapeHtml(value) {
     '"': '&quot;',
     "'": '&#39;',
   }[ch]));
+}
+
+function getDefaultStageIconId() {
+  return (STAGE_ICONS[0] && STAGE_ICONS[0].id) || 'square';
+}
+
+function getStageIcon(iconId) {
+  const id = String(iconId || '').trim();
+  return STAGE_ICONS.find(icon => icon.id === id) || null;
+}
+
+function isLegacyStageIconId(iconId) {
+  return iconId === 'square' || iconId === 'circle';
+}
+
+function normalizeStageIconId(iconId) {
+  const id = String(iconId || '').trim();
+  if (isLegacyStageIconId(id)) return id;
+  return getStageIcon(id) ? id : getDefaultStageIconId();
+}
+
+function makeStageIconSvg(icon, instanceId) {
+  if (!icon || !icon.svg) return '';
+  const suffix = String(instanceId || icon.id).replace(/[^a-zA-Z0-9_-]/g, '-');
+  return icon.svg
+    .replace(/\sid="([^"]+)"/g, (_, id) => ` id="${id}-${suffix}"`)
+    .replace(/url\(#([^)]+)\)/g, (_, id) => `url(#${id}-${suffix})`);
+}
+
+function getStageVisualMarkup(iconId, instanceId = 'stage-node') {
+  const id = normalizeStageIconId(iconId);
+  const icon = getStageIcon(id);
+  if (icon) {
+    return `<div class="node-shape stage-icon-node" data-stage-icon="${escapeHtml(id)}" aria-label="${escapeHtml(icon.label)}">${makeStageIconSvg(icon, instanceId)}</div>`;
+  }
+  const legacy = id === 'circle' ? 'circle' : 'square';
+  const label = legacy === 'circle' ? 'Legacy Circle' : 'Legacy Square';
+  return `<div class="node-shape legacy-node-shape ${legacy}" data-stage-icon="${legacy}" aria-label="${label}"></div>`;
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -167,7 +558,7 @@ const store = createStore((set, get) => ({
     nid: s.nid + 1,
   })),
   removePlanNode: (id) => set(s => ({ planNodes: s.planNodes.filter(n => n.id !== id), ...removeStageShiftsForNodeData(s, id) })),
-  movePlanNode: (id, col) => set(s => ({ planNodes: s.planNodes.map(n => n.id === id ? { ...n, col } : n) })),
+  movePlanNode: (id, col) => set(s => ({ planNodes: s.planNodes.map(n => n.id === id ? moveStageNodeToCol(n, 'plan', col, s) : n) })),
   updatePlanNode: (id, data) => set(s => {
     const next = updateStageNodeData(s, 'plan', id, data);
     if (next.ok === false) return {};
@@ -181,7 +572,7 @@ const store = createStore((set, get) => ({
     nid: s.nid + 1,
   })),
   removeActualNode: (id) => set(s => ({ actualNodes: s.actualNodes.filter(n => n.id !== id), ...removeStageShiftsForNodeData(s, id) })),
-  moveActualNode: (id, col) => set(s => ({ actualNodes: s.actualNodes.map(n => n.id === id ? { ...n, col } : n) })),
+  moveActualNode: (id, col) => set(s => ({ actualNodes: s.actualNodes.map(n => n.id === id ? moveStageNodeToCol(n, 'actual', col, s) : n) })),
   updateActualNode: (id, data) => set(s => {
     const next = updateStageNodeData(s, 'actual', id, data);
     if (next.ok === false) return {};
@@ -196,7 +587,7 @@ const store = createStore((set, get) => ({
     nid: s.nid + 1,
   })),
   removeBranchNode: (id) => set(s => removeBranchNodeData(s, id)),
-  moveBranchNode: (id, col) => set(s => ({ branchNodes: s.branchNodes.map(n => n.id === id ? { ...n, col } : n) })),
+  moveBranchNode: (id, col) => set(s => ({ branchNodes: s.branchNodes.map(n => n.id === id ? moveStageNodeToCol(n, 'branch', col, s) : n) })),
   updateBranchNode: (id, data) => set(s => {
     const next = updateStageNodeData(s, 'branch', id, data);
     if (next.ok === false) return {};
@@ -210,7 +601,7 @@ const store = createStore((set, get) => ({
     nid: s.nid + 1,
   })),
   removeActualBranchNode: (id) => set(s => removeActualBranchNodeData(s, id)),
-  moveActualBranchNode: (id, col) => set(s => ({ actualBranchNodes: s.actualBranchNodes.map(n => n.id === id ? { ...n, col } : n) })),
+  moveActualBranchNode: (id, col) => set(s => ({ actualBranchNodes: s.actualBranchNodes.map(n => n.id === id ? moveStageNodeToCol(n, 'actualBranch', col, s) : n) })),
   updateActualBranchNode: (id, data) => set(s => {
     const next = updateStageNodeData(s, 'actualBranch', id, data);
     if (next.ok === false) return {};
@@ -425,6 +816,107 @@ function colToInputDate(col, state) {
   return month ? `${month}-01` : '';
 }
 
+function getInputDateFromToday(today = new Date()) {
+  const d = today instanceof Date ? today : new Date(today);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function getNextMonthInputMonth(today = new Date()) {
+  const d = today instanceof Date ? today : new Date(today);
+  if (Number.isNaN(d.getTime())) return '';
+  const monthIndex = d.getMonth() + 1;
+  const year = d.getFullYear() + (monthIndex > 11 ? 1 : 0);
+  const month = (monthIndex % 12) + 1;
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+function isActualDateInFuture(value, today = new Date()) {
+  if (!isFullActualDate(value)) return false;
+  const todayValue = getInputDateFromToday(today);
+  return !!todayValue && String(value).trim() > todayValue;
+}
+
+function getFutureActualBlankSpaceCol(state, today = new Date()) {
+  const month = getNextMonthInputMonth(today);
+  const visibleCol = dateToCol(month, state);
+  if (visibleCol >= 0) return visibleCol;
+  if (!month || !state.years.length) return 0;
+  const [year, monthValue] = month.split('-').map(Number);
+  return Math.max(0, (year - Number(state.years[0])) * 12 + monthValue - 1);
+}
+
+function getFutureActualBlankSpacePoint(state, today = new Date(), yOffset = 18) {
+  const col = getFutureActualBlankSpaceCol(state, today);
+  return {
+    x: col * COL + COL / 2,
+    y: getTopOffset(state) + getPlannedH(state) + 4 + ROH / 2 + yOffset,
+  };
+}
+
+function needsFutureActualBlankSpace(state) {
+  if (state.remarks || state.milestoneTableVisible) return true;
+  const nodeHasDrs = node => node && node.isDRS && String(node.drsDetail || '').trim();
+  return [
+    ...(state.planNodes || []),
+    ...(state.branchNodes || []),
+    ...(state.actualNodes || []),
+    ...(state.actualBranchNodes || []),
+  ].some(nodeHasDrs) || (state.stageShifts || []).some(shift => String(shift.drsDetail || '').trim());
+}
+
+function ensureFutureActualBlankSpaceVisible(state) {
+  if (!needsFutureActualBlankSpace(state)) return state;
+  const month = getNextMonthInputMonth();
+  if (!month || dateToCol(month, state) >= 0) return state;
+  const liveState = store.getState();
+  if (liveState && typeof liveState.ensureYearVisible === 'function') {
+    liveState.ensureYearVisible(`${month}-01`);
+    return store.getState();
+  }
+  return state;
+}
+
+function getStageSlotRatio(node, rType) {
+  if (!isPlanStageContext(rType)) return 0.5;
+  const label = normalizePlanBottomLabel(node && node.bottomLabel);
+  if (label === 'Beg') return 0.25;
+  if (label === 'End') return 0.75;
+  return 0.5;
+}
+
+function getStageCollectionForContext(state, rType) {
+  if (rType === 'plan') return state.planNodes || [];
+  if (rType === 'branch') return state.branchNodes || [];
+  if (rType === 'actual') return state.actualNodes || [];
+  if (rType === 'actualBranch') return state.actualBranchNodes || [];
+  return [];
+}
+
+function getStageRowKey(node, rType) {
+  return rType === 'plan' || rType === 'actual' ? node.variantId : node.branchId;
+}
+
+function getStageVisualX(node, rType, state) {
+  if (!node || !Number.isFinite(node.col)) return 0;
+  const ratio = getStageSlotRatio(node, rType);
+  const rowKey = getStageRowKey(node, rType);
+  const group = getStageCollectionForContext(state, rType)
+    .filter(n =>
+      n.col === node.col &&
+      getStageRowKey(n, rType) === rowKey &&
+      getStageSlotRatio(n, rType) === ratio
+    )
+    .sort((a, b) => String(a.id || '').localeCompare(String(b.id || '')));
+  const index = Math.max(0, group.findIndex(n => n.id === node.id));
+  const gap = 6;
+  const maxOffset = Math.max(0, (group.length - 1) / 2 * gap);
+  const minX = node.col * COL + 14;
+  const maxX = (node.col + 1) * COL - 14;
+  const baseX = Math.min(maxX - maxOffset, Math.max(minX + maxOffset, node.col * COL + COL * ratio));
+  return Math.min(maxX, Math.max(minX, baseX + (index - (group.length - 1) / 2) * gap));
+}
+
 function isPlanStageContext(rType) {
   return rType === 'plan' || rType === 'branch';
 }
@@ -447,6 +939,9 @@ function prepareStageNodeData(state, rType, currentCol, data, existing) {
   if (isActualStageContext(rType) && !isFullActualDate(date)) {
     return { ok: false, reason: 'Enter the actual date.' };
   }
+  if (isActualStageContext(rType) && isActualDateInFuture(date)) {
+    return { ok: false, reason: 'Actual date cannot be in the future.' };
+  }
   if (date && isPlanStageContext(rType) && !/^\d{4}-\d{2}$/.test(date)) {
     return { ok: false, reason: 'Select a valid month.' };
   }
@@ -463,7 +958,7 @@ function prepareStageNodeData(state, rType, currentCol, data, existing) {
     reason: '',
     node: {
       col,
-      type: data.type || (existing && existing.type) || 'square',
+      type: normalizeStageIconId(data.type || (existing && existing.type)),
       topLabel: String(data.topLabel || '').trim(),
       bottomLabel: isPlanStageContext(rType) ? normalizePlanBottomLabel(data.bottomLabel) : '',
       date,
@@ -529,6 +1024,34 @@ function colToDate(col, state) {
   return `${year}-${String(month).padStart(2, '0')}`;
 }
 
+function getLastDayOfInputMonth(monthValue) {
+  const match = String(monthValue || '').match(/^(\d{4})-(\d{2})$/);
+  if (!match) return 1;
+  return new Date(Number(match[1]), Number(match[2]), 0).getDate();
+}
+
+function getActualDateDay(value) {
+  const match = String(value || '').match(/^\d{4}-\d{2}-(\d{2})$/);
+  return match ? Number(match[1]) : 1;
+}
+
+function getMovedStageDate(node, rType, col, state) {
+  const month = colToInputMonth(col, state);
+  if (!month) return (node && node.date) || '';
+  if (!isActualStageContext(rType)) return month;
+  const day = Math.min(getActualDateDay(node && node.date), getLastDayOfInputMonth(month));
+  return `${month}-${String(day).padStart(2, '0')}`;
+}
+
+function moveStageNodeToCol(node, rType, col, state) {
+  if (!node) return node;
+  return {
+    ...node,
+    col,
+    date: getMovedStageDate(node, rType, col, state),
+  };
+}
+
 function getPdfTimelineSlice({ totalCols, colWidth, timelineWidthPx, horizontalScale = 1 }) {
   const safeTotalCols = Math.max(0, Number(totalCols) || 0);
   const safeColWidth = Math.max(1, Number(colWidth) || COL);
@@ -579,19 +1102,22 @@ function normalizeMonthInput(raw) {
   return '';
 }
 
-function parseEopItems(state) {
+function parseEopItems(state, today = new Date()) {
   const table = state.rightTable || { cols: [], rows: [] };
   const dateCols = (table.cols || [])
     .map((col, index) => (/date|month/i.test(col || '') ? index : -1))
     .filter(index => index >= 0);
   const cols = dateCols.length ? dateCols : [1];
+  const inferredDate = getNextMonthInputMonth(today);
   const items = [];
 
   (table.rows || []).forEach((row, rowIndex) => {
     const label = String((row && row[0]) || '').trim();
+    let hasDatedItem = false;
     cols.forEach(colIndex => {
       const date = normalizeMonthInput(row && row[colIndex]);
       if (!date) return;
+      hasDatedItem = true;
       items.push({
         id: `eop-${rowIndex}-${colIndex}`,
         label,
@@ -601,6 +1127,16 @@ function parseEopItems(state) {
         colIndex,
       });
     });
+    if (!hasDatedItem && label && inferredDate) {
+      items.push({
+        id: `eop-${rowIndex}-inferred`,
+        label,
+        date: inferredDate,
+        col: dateToCol(inferredDate, state),
+        rowIndex,
+        colIndex: cols[0] ?? 1,
+      });
+    }
   });
 
   return items.sort((a, b) => a.col - b.col || a.rowIndex - b.rowIndex || a.colIndex - b.colIndex);
@@ -891,7 +1427,7 @@ function copyStageForActual(node, id, contextKey) {
     id,
     sourcePlanNodeId: node.id,
     col: node.col,
-    type: node.type || 'square',
+    type: normalizeStageIconId(node.type),
     topLabel: node.topLabel || '',
     bottomLabel: node.bottomLabel || '',
     date: node.date || '',
@@ -967,11 +1503,16 @@ function copyPlanToActualData(state) {
 let persistenceReady = false;
 let suppressDraftSave = false;
 let draftSaveTimer = null;
+let submitVersions = [];
+let discussionCutoffDates = [];
+let snapshotView = { selected: TIMELINE_VERSION_CURRENT, state: null, cutoffDate: '', versionId: '' };
 
 function getStorageKeys(projectId) {
   return {
     draft: `${STORAGE_PREFIX}:draft:${projectId}`,
     baseline: `${STORAGE_PREFIX}:baseline:${projectId}`,
+    submitVersions: `${STORAGE_PREFIX}:submit-versions:${projectId}`,
+    discussionCutoffs: `${STORAGE_PREFIX}:discussion-cutoffs:${projectId}`,
   };
 }
 
@@ -1054,6 +1595,13 @@ function scheduleDraftSave() {
 function updateDraftStatus(message) {
   const status = $('draftStatus');
   if (!status) return;
+  if (isSnapshotReadOnlyMode()) {
+    status.hidden = false;
+    $('draftStatusText').textContent = message || `Viewing ${getTimelineVersionLabel(snapshotView.selected)}`;
+    const revert = $('revertDraftBtn');
+    if (revert) revert.disabled = true;
+    return;
+  }
   const draft = readLocalJson(getCurrentStorageKeys().draft) || captureState();
   const baseline = getBaselineState();
   const dirty = isDirty(draft, baseline);
@@ -1061,35 +1609,116 @@ function updateDraftStatus(message) {
   $('draftStatusText').textContent = message || (dirty ? 'Draft changes' : 'Saved');
 }
 
-function syncHeaderInputsFromState() {
-  const { info, remarks } = store.getState();
+function syncHeaderInputsFromState(state = getTimelineRenderState()) {
+  const { info, remarks } = state;
   $('fProject').value = info.project || '';
   $('fLocation').value = info.location || '';
   $('fPlant').value = info.plant || '';
   $('fProjType').value = info.type || '';
   $('fStatus').value = info.status || 'On Track';
   $('remarksBox').textContent = remarks || '';
-  syncPubBtn();
+  syncPubBtn(state);
 }
 
 function loadSample() {
+  const stageLogo = getDefaultStageIconId();
   store.getState().replaceState({
     variants: [{ id: 'v1', name: 'DOM Gas' }, { id: 'v2', name: 'DOM CNG' }],
     nid: 50,
     planNodes: [
-      { id: 'p1', variantId: 'v1', col: 5, type: 'square', topLabel: 'DA', bottomLabel: '', date: '2024-06', isDRS: false, drsDetail: '' },
-      { id: 'p2', variantId: 'v1', col: 9, type: 'square', topLabel: 'SOS', bottomLabel: '', date: '2024-10', isDRS: false, drsDetail: '' },
-      { id: 'p3', variantId: 'v2', col: 6, type: 'square', topLabel: 'DA', bottomLabel: '', date: '2024-07', isDRS: false, drsDetail: '' },
+      { id: 'p1', variantId: 'v1', col: 5, type: stageLogo, topLabel: 'DA', bottomLabel: '', date: '2024-06', isDRS: false, drsDetail: '' },
+      { id: 'p2', variantId: 'v1', col: 9, type: stageLogo, topLabel: 'SOS', bottomLabel: '', date: '2024-10', isDRS: false, drsDetail: '' },
+      { id: 'p3', variantId: 'v2', col: 6, type: stageLogo, topLabel: 'DA', bottomLabel: '', date: '2024-07', isDRS: false, drsDetail: '' },
     ],
     actualNodes: [
-      { id: 'a1', variantId: 'v1', col: 6, type: 'square', topLabel: '', bottomLabel: '', date: '2024-07', isDRS: false, drsDetail: '' },
+      { id: 'a1', variantId: 'v1', col: 6, type: stageLogo, topLabel: '', bottomLabel: '', date: '2024-07', isDRS: false, drsDetail: '' },
     ],
   });
 }
 
-function initPersistenceState() {
+function getFallbackDiscussionCutoffs(state, versions, storedCutoffs) {
+  return normalizeDiscussionCutoffDates([
+    ...(Array.isArray(storedCutoffs) ? storedCutoffs : []),
+    state && state.discussionDate,
+    ...normalizeSubmitVersions(versions).map(version => version.discussionDate),
+  ]);
+}
+
+async function loadProjectFromDataverse(projectId) {
+  if (typeof window === 'undefined') return null;
+  const bridge = window.ProjectTrackerDataverse;
+  if (!bridge || typeof bridge.loadProject !== 'function') return null;
+  return bridge.loadProject({ projectId });
+}
+
+function getLoadedProjectState(data) {
+  return (data && (data.state || data.currentState || data.draft || data.projectState)) || null;
+}
+
+function getLoadedDiscussionDate(data, state) {
+  return normalizeDiscussionDate(data && (
+    data.currentDiscussionDate ||
+    data.discussionDate ||
+    data.discussionPeriodDate ||
+    data.activeDiscussionPeriodDate ||
+    (state && state.discussionDate)
+  ));
+}
+
+function getLoadedCutoffDates(data) {
+  return normalizeDiscussionCutoffDates(data && (
+    data.discussionCutoffDates ||
+    data.cutoffDates ||
+    data.discussionPeriods ||
+    data.snapshotDates
+  ));
+}
+
+async function initPersistenceState() {
   const projectId = getOrCreateActiveProjectId();
   const keys = getStorageKeys(projectId);
+  let loaded = null;
+
+  try {
+    loaded = await loadProjectFromDataverse(projectId);
+  } catch (err) {
+    console.warn('Could not load project from Dataverse bridge:', err);
+  }
+
+  if (loaded) {
+    const loadedProjectId = loaded.projectId || projectId;
+    const loadedState = getLoadedProjectState(loaded);
+    const activeDiscussionDate = getLoadedDiscussionDate(loaded, loadedState);
+    if (loadedState) {
+      store.getState().replaceState({
+        ...loadedState,
+        ...(activeDiscussionDate ? { discussionDate: activeDiscussionDate } : {}),
+        projectId: loadedProjectId,
+      });
+    } else {
+      loadSample();
+      store.getState().setProjectId(loadedProjectId);
+      if (activeDiscussionDate) store.getState().replaceState({ ...captureState(), discussionDate: activeDiscussionDate });
+    }
+    try {
+      localStorage.setItem(ACTIVE_PROJECT_KEY, loadedProjectId);
+    } catch (err) {
+      console.warn('Could not update active project id:', err);
+    }
+    const loadedKeys = getStorageKeys(loadedProjectId);
+    submitVersions = normalizeSubmitVersions(loaded.submitVersions || loaded.versions || []);
+    discussionCutoffDates = getLoadedCutoffDates(loaded);
+    if (!discussionCutoffDates.length) {
+      discussionCutoffDates = getFallbackDiscussionCutoffs(store.getState(), submitVersions, readLocalJson(loadedKeys.discussionCutoffs));
+    }
+    writeLocalJson(loadedKeys.submitVersions, submitVersions);
+    writeLocalJson(loadedKeys.discussionCutoffs, discussionCutoffDates);
+    writeLocalJson(loadedKeys.draft, captureState());
+    if (!readLocalJson(loadedKeys.baseline)) writeLocalJson(loadedKeys.baseline, captureState());
+    persistenceReady = true;
+    return;
+  }
+
   const draft = readLocalJson(keys.draft);
   const baseline = readLocalJson(keys.baseline);
 
@@ -1107,6 +1736,10 @@ function initPersistenceState() {
   }
 
   if (!readLocalJson(keys.baseline)) writeLocalJson(keys.baseline, captureState());
+  submitVersions = normalizeSubmitVersions(readLocalJson(keys.submitVersions) || []);
+  discussionCutoffDates = getFallbackDiscussionCutoffs(store.getState(), submitVersions, readLocalJson(keys.discussionCutoffs));
+  writeLocalJson(keys.submitVersions, submitVersions);
+  writeLocalJson(keys.discussionCutoffs, discussionCutoffDates);
   persistenceReady = true;
 }
 
@@ -1151,7 +1784,7 @@ function mapStages(nodes, context, extra) {
     stage_context: context,
     month: node.date || '',
     column_index: Number.isFinite(node.col) ? node.col : 0,
-    shape: node.type || 'square',
+    shape: normalizeStageIconId(node.type),
     top_label: node.topLabel || '',
     bottom_label: node.bottomLabel || '',
     is_drs: !!node.isDRS,
@@ -1256,21 +1889,49 @@ function createDataverseDelta(draft, baseline) {
   return { hasChanges: changedGroups.length > 0, changedGroups, current: nextPayload, baseline: prevPayload };
 }
 
-async function saveDraftToDataverse(draft, baseline) {
+function writeLocalSubmitVersion(projectId, submitVersion) {
+  const keys = getStorageKeys(projectId);
+  const versions = mergeSubmitVersions(readLocalJson(keys.submitVersions) || [], submitVersion);
+  const cutoffs = getFallbackDiscussionCutoffs(submitVersion.state || {}, versions, readLocalJson(keys.discussionCutoffs));
+  writeLocalJson(keys.submitVersions, versions);
+  writeLocalJson(keys.discussionCutoffs, cutoffs);
+  return { versions, cutoffs };
+}
+
+async function saveDraftToDataverse(draft, baseline, submittedAt = new Date().toISOString()) {
   const delta = createDataverseDelta(draft, baseline);
+  const submitVersion = createSubmitVersionRecord(draft, delta.current, submittedAt);
   const bridge = window.ProjectTrackerDataverse;
 
   if (bridge && typeof bridge.saveProject === 'function') {
-    return bridge.saveProject({ projectId: draft.projectId, delta, payload: delta.current });
+    const result = await bridge.saveProject({
+      projectId: draft.projectId,
+      delta,
+      payload: delta.current,
+      submitVersion,
+      submittedVersion: submitVersion,
+    });
+    return {
+      ...(result || {}),
+      submitVersion: (result && (result.submitVersion || result.submittedVersion)) || submitVersion,
+    };
   }
 
+  const localHistory = writeLocalSubmitVersion(draft.projectId, submitVersion);
   writeLocalJson(`${STORAGE_PREFIX}:dataverse-payload:${draft.projectId}`, {
     projectId: draft.projectId,
     savedAt: new Date().toISOString(),
     delta,
+    submitVersion,
   });
   console.warn('ProjectTrackerDataverse.saveProject not configured; Dataverse payload saved locally.');
-  return { projectId: draft.projectId, developmentOnly: true };
+  return {
+    projectId: draft.projectId,
+    developmentOnly: true,
+    submitVersion,
+    submitVersions: localHistory.versions,
+    discussionCutoffDates: localHistory.cutoffs,
+  };
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1289,13 +1950,156 @@ const modalOverlay = $('modalOverlay');
 const modalBody = $('modalBody');
 const modalTitle = $('modalTitle');
 
+function isSnapshotReadOnlyMode() {
+  return snapshotView.selected !== TIMELINE_VERSION_CURRENT && !!snapshotView.state;
+}
+
+function getTimelineRenderState() {
+  return isSnapshotReadOnlyMode() ? snapshotView.state : store.getState();
+}
+
+function getTimelineVersionOptions() {
+  return buildTimelineVersionOptions(discussionCutoffDates, submitVersions);
+}
+
+function getTimelineVersionLabel(value) {
+  const option = getTimelineVersionOptions().find(item => item.value === value);
+  return option ? option.label : 'Current';
+}
+
+function clearTransientTimelineUi() {
+  nodePopup.classList.remove('active');
+  ctxMenu.classList.remove('active');
+  pendCell = null;
+  ctxId = null;
+  ctxRowType = null;
+  ctxCell = null;
+  if (mergePick) clearMergePick();
+}
+
+function refreshTimelineVersionPicker() {
+  const select = $('timelineVersionSelect');
+  if (!select) return;
+  const options = getTimelineVersionOptions();
+  if (!options.some(option => option.value === snapshotView.selected && !option.disabled)) {
+    snapshotView = { selected: TIMELINE_VERSION_CURRENT, state: null, cutoffDate: '', versionId: '' };
+  }
+  select.innerHTML = options.map(option => {
+    const disabled = option.disabled ? ' disabled' : '';
+    const detail = option.disabled ? ' - no submitted version' : '';
+    return `<option value="${escapeHtml(option.value)}"${disabled}>${escapeHtml(option.label + detail)}</option>`;
+  }).join('');
+  select.value = snapshotView.selected;
+}
+
+async function loadSubmitVersionForOption(option) {
+  if (!option || !option.versionId) return null;
+  let version = submitVersions.find(item => item.id === option.versionId) || null;
+  if (version && version.state) return version;
+  const bridge = window.ProjectTrackerDataverse;
+  if (bridge && typeof bridge.getSubmitVersion === 'function') {
+    const result = await bridge.getSubmitVersion({
+      projectId: store.getState().projectId,
+      versionId: option.versionId,
+    });
+    version = normalizeSubmitVersion(result && (result.submitVersion || result.version || result));
+    if (version) {
+      submitVersions = mergeSubmitVersions(submitVersions, version);
+      refreshTimelineVersionPicker();
+      return version;
+    }
+  }
+  return version;
+}
+
+async function selectTimelineVersion(value) {
+  const select = $('timelineVersionSelect');
+  const option = getTimelineVersionOptions().find(item => item.value === value);
+  if (!option || option.disabled || option.type === 'current') {
+    snapshotView = { selected: TIMELINE_VERSION_CURRENT, state: null, cutoffDate: '', versionId: '' };
+    if (select) select.value = TIMELINE_VERSION_CURRENT;
+    syncHeaderInputsFromState(store.getState());
+    renderAll();
+    updateDraftStatus();
+    return;
+  }
+
+  const version = await loadSubmitVersionForOption(option);
+  if (!version || !version.state) {
+    alert('Snapshot data is not available for this timeline version.');
+    snapshotView = { selected: TIMELINE_VERSION_CURRENT, state: null, cutoffDate: '', versionId: '' };
+    if (select) select.value = TIMELINE_VERSION_CURRENT;
+    syncHeaderInputsFromState(store.getState());
+    renderAll();
+    updateDraftStatus();
+    return;
+  }
+
+  clearTransientTimelineUi();
+  snapshotView = {
+    selected: option.value,
+    cutoffDate: option.cutoffDate,
+    versionId: version.id,
+    state: {
+      ...cloneState(version.state),
+      discussionDate: option.cutoffDate || version.state.discussionDate || '',
+    },
+  };
+  if (select) select.value = option.value;
+  syncHeaderInputsFromState(snapshotView.state);
+  renderAll();
+  updateDraftStatus(`Viewing ${option.label}`);
+}
+
+function syncTimelineVersionsFromSaveResult(result) {
+  if (!result) return;
+  if (result.submitVersions || result.versions) {
+    submitVersions = normalizeSubmitVersions(result.submitVersions || result.versions);
+  } else if (result.submitVersion || result.submittedVersion) {
+    submitVersions = mergeSubmitVersions(submitVersions, result.submitVersion || result.submittedVersion);
+  }
+
+  const incomingCutoffs = normalizeDiscussionCutoffDates(
+    result.discussionCutoffDates || result.cutoffDates || result.discussionPeriods || []
+  );
+  discussionCutoffDates = incomingCutoffs.length
+    ? incomingCutoffs
+    : getFallbackDiscussionCutoffs(store.getState(), submitVersions, discussionCutoffDates);
+
+  const keys = getCurrentStorageKeys();
+  writeLocalJson(keys.submitVersions, submitVersions);
+  writeLocalJson(keys.discussionCutoffs, discussionCutoffDates);
+  refreshTimelineVersionPicker();
+}
+
+function updateSnapshotReadOnlyUi() {
+  const readOnly = isSnapshotReadOnlyMode();
+  document.body.classList.toggle('snapshot-readonly', readOnly);
+  [
+    'fProject', 'fLocation', 'fPlant', 'fProjType', 'fStatus', 'variantInput',
+    'nodeTypeSelect', 'addVariantBtn', 'publishToggle', 'revertDraftBtn',
+    'copyActualBtn', 'addYearBtn', 'addMsRowBtn', 'addMsColBtn',
+    'addEopRowBtn', 'submitBtn',
+  ].forEach(id => {
+    const el = $(id);
+    if (el) el.disabled = readOnly;
+  });
+  const remarks = $('remarksBox');
+  if (remarks) remarks.contentEditable = readOnly ? 'false' : 'true';
+  document.querySelectorAll('.stage-icon-option').forEach(btn => {
+    btn.disabled = readOnly;
+  });
+}
+
 function renderAll() {
-  const s = store.getState();
+  let s = getTimelineRenderState();
+  if (!isSnapshotReadOnlyMode()) s = ensureFutureActualBlankSpaceVisible(s);
   renderHeaders(s);
   renderSidebar(s);
   renderGrid(s);
   renderNodes(s);
   renderBottomTables(s);
+  updateSnapshotReadOnlyUi();
 }
 
 function renderHeaders(state) {
@@ -1442,6 +2246,7 @@ function renderEopLane(grp, tc, state) {
 
 function makeSubRow(tc, vId, rType, state) {
   const sr = document.createElement('div');
+  const readOnly = isSnapshotReadOnlyMode();
   sr.className = 'grid-sub-row ' + (rType === 'plan' ? 'plan-sub' : 'actual-sub');
   sr.style.height = ROH + 'px';
   sr.style.position = 'relative';
@@ -1451,8 +2256,10 @@ function makeSubRow(tc, vId, rType, state) {
     c.dataset.col = col;
     c.dataset.vId = vId;
     c.dataset.rType = rType;
-    c.addEventListener('click', onCellClick);
-    if (rType === 'plan' || rType === 'actual') c.addEventListener('contextmenu', showCellCtx);
+    if (!readOnly) {
+      c.addEventListener('click', onCellClick);
+      if (rType === 'plan' || rType === 'actual') c.addEventListener('contextmenu', showCellCtx);
+    }
     sr.appendChild(c);
   }
   return sr;
@@ -1460,6 +2267,7 @@ function makeSubRow(tc, vId, rType, state) {
 
 function makeBranchSubRow(tc, branchId, rType, label, state) {
   const sr = document.createElement('div');
+  const readOnly = isSnapshotReadOnlyMode();
   sr.className = 'grid-sub-row branch-sub' + (rType === 'actualBranch' ? ' actual-branch-sub' : '');
   sr.style.height = ROH + 'px';
   sr.style.position = 'relative';
@@ -1470,16 +2278,22 @@ function makeBranchSubRow(tc, branchId, rType, label, state) {
     c.dataset.col = col;
     c.dataset.branchId = branchId;
     c.dataset.rType = rType;
-    if (placement.ok) c.addEventListener('click', onCellClick);
+    if (placement.ok && !readOnly) c.addEventListener('click', onCellClick);
     else c.title = placement.reason;
     sr.appendChild(c);
   }
   const pill = document.createElement('div');
   pill.className = 'branch-div-pill' + (rType === 'actualBranch' ? ' actual-branch-pill' : '');
+  const sourceCol = getBranchStartCol(state, rType, branchId);
+  if (sourceCol != null) {
+    const sourceX = sourceCol * COL + COL / 2;
+    const leftOfLine = sourceX - 112;
+    pill.style.left = `${leftOfLine >= 4 ? leftOfLine : sourceX + 10}px`;
+  }
   const pillText = document.createElement('span');
   pillText.textContent = '↳ ' + (label || 'Branch');
   pill.appendChild(pillText);
-  if (rType === 'branch' || rType === 'actualBranch') {
+  if (!readOnly && (rType === 'branch' || rType === 'actualBranch')) {
     const del = document.createElement('button');
     del.className = 'branch-pill-del';
     del.type = 'button';
@@ -1512,7 +2326,7 @@ function drawLines(grp, state) {
     const pn = state.planNodes.filter(n => n.variantId === vr.id).sort((a, b) => a.col - b.col);
     const y = getTopOffset(state) + laneIdx * ROH + ROH / 2;
     for (let i = 0; i < pn.length - 1; i++)
-      mkLine(grp, pn[i].col * COL + COL / 2, y, pn[i + 1].col * COL + COL / 2, y, '#2563eb');
+      mkLine(grp, getStageVisualX(pn[i], 'plan', state), y, getStageVisualX(pn[i + 1], 'plan', state), y, '#2563eb');
     const lastPlan = pn[pn.length - 1];
     if (lastPlan) {
       const branchIds = new Set(state.branches.filter(b => b.variantId === vr.id).map(b => b.id));
@@ -1521,7 +2335,7 @@ function drawLines(grp, state) {
         .map(link => getMergeTargetCol(link, state))
         .filter(col => Number.isFinite(col)));
       if (maxMergeCol > lastPlan.col) {
-        mkLine(grp, lastPlan.col * COL + COL / 2, y, maxMergeCol * COL + COL / 2, y, '#2563eb');
+        mkLine(grp, getStageVisualX(lastPlan, 'plan', state), y, maxMergeCol * COL + COL / 2, y, '#2563eb');
       }
     }
   });
@@ -1532,7 +2346,7 @@ function drawLines(grp, state) {
     const bY = getTopOffset(state) + laneIdx * ROH + ROH / 2;
     const bn = state.branchNodes.filter(n => n.branchId === br.id).sort((a, b) => a.col - b.col);
     for (let i = 0; i < bn.length - 1; i++)
-      mkLine(grp, bn[i].col * COL + COL / 2, bY, bn[i + 1].col * COL + COL / 2, bY, '#00c9b1');
+      mkLine(grp, getStageVisualX(bn[i], 'branch', state), bY, getStageVisualX(bn[i + 1], 'branch', state), bY, '#00c9b1');
   });
 
   state.variants.forEach(vr => {
@@ -1541,7 +2355,7 @@ function drawLines(grp, state) {
     const an = state.actualNodes.filter(n => n.variantId === vr.id).sort((a, b) => a.col - b.col);
     const y = getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2;
     for (let i = 0; i < an.length - 1; i++)
-      mkLine(grp, an[i].col * COL + COL / 2, y, an[i + 1].col * COL + COL / 2, y, '#f97316');
+      mkLine(grp, getStageVisualX(an[i], 'actual', state), y, getStageVisualX(an[i + 1], 'actual', state), y, '#f97316');
     const lastActual = an[an.length - 1];
     if (lastActual) {
       const branchIds = new Set((state.actualBranches || []).filter(b => b.variantId === vr.id).map(b => b.id));
@@ -1550,7 +2364,7 @@ function drawLines(grp, state) {
         .map(link => getMergeTargetCol(link, state))
         .filter(col => Number.isFinite(col)));
       if (maxMergeCol > lastActual.col) {
-        mkLine(grp, lastActual.col * COL + COL / 2, y, maxMergeCol * COL + COL / 2, y, '#f97316');
+        mkLine(grp, getStageVisualX(lastActual, 'actual', state), y, maxMergeCol * COL + COL / 2, y, '#f97316');
       }
     }
   });
@@ -1561,7 +2375,7 @@ function drawLines(grp, state) {
     const y = getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2;
     const nodes = state.actualBranchNodes.filter(n => n.branchId === br.id).sort((a, b) => a.col - b.col);
     for (let i = 0; i < nodes.length - 1; i++)
-      mkLine(grp, nodes[i].col * COL + COL / 2, y, nodes[i + 1].col * COL + COL / 2, y, '#f97316');
+      mkLine(grp, getStageVisualX(nodes[i], 'actualBranch', state), y, getStageVisualX(nodes[i + 1], 'actualBranch', state), y, '#f97316');
   });
 
   drawRelationshipArrows(grp, state);
@@ -1729,25 +2543,25 @@ function getFirstActualBranchNode(branchId, state) {
 function getPlanNodeCenter(node, state) {
   const laneIdx = findPlanLaneIndex(state, 'plan', node.variantId);
   if (laneIdx < 0) return null;
-  return { x: node.col * COL + COL / 2, y: getTopOffset(state) + laneIdx * ROH + ROH / 2 };
+  return { x: getStageVisualX(node, 'plan', state), y: getTopOffset(state) + laneIdx * ROH + ROH / 2 };
 }
 
 function getBranchNodeCenter(node, state) {
   const laneIdx = findPlanLaneIndex(state, 'branch', node.branchId);
   if (laneIdx < 0) return null;
-  return { x: node.col * COL + COL / 2, y: getTopOffset(state) + laneIdx * ROH + ROH / 2 };
+  return { x: getStageVisualX(node, 'branch', state), y: getTopOffset(state) + laneIdx * ROH + ROH / 2 };
 }
 
 function getActualNodeCenter(node, state) {
   const laneIdx = findActualLaneIndex(state, 'actual', node.variantId);
   if (laneIdx < 0) return null;
-  return { x: node.col * COL + COL / 2, y: getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2 };
+  return { x: getStageVisualX(node, 'actual', state), y: getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2 };
 }
 
 function getActualBranchNodeCenter(node, state) {
   const laneIdx = findActualLaneIndex(state, 'branch', node.branchId);
   if (laneIdx < 0) return null;
-  return { x: node.col * COL + COL / 2, y: getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2 };
+  return { x: getStageVisualX(node, 'actualBranch', state), y: getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2 };
 }
 
 function findStageByContext(state, context, nodeId) {
@@ -1771,11 +2585,11 @@ function getStageCenterByContext(node, context, state) {
 function getStageShiftTargetCenter(shift, source, state) {
   const from = getStageCenterByContext(source, shift.sourceContext, state);
   if (!from || !Number.isFinite(shift.targetCol)) return null;
-  return { x: shift.targetCol * COL + COL / 2, y: from.y };
+  return { x: getStageVisualX({ ...source, id: shift.id, col: shift.targetCol }, shift.sourceContext, state), y: from.y };
 }
 
 function renderNodes(state) {
-  document.querySelectorAll('.node,.drs-detail-label').forEach(e => e.remove());
+  document.querySelectorAll('.node,.drs-detail-label,.drs-summary-box').forEach(e => e.remove());
   const grp = tlGrid.querySelector('.grid-vr-grp');
   if (!grp) return;
   const shiftedNodeIds = new Set((state.stageShifts || []).map(shift => shift.sourceNodeId));
@@ -1784,96 +2598,81 @@ function renderNodes(state) {
     const laneIdx = findPlanLaneIndex(state, 'plan', n.variantId);
     if (laneIdx < 0) return;
     const y = getTopOffset(state) + laneIdx * ROH + ROH / 2;
+    const x = getStageVisualX(n, 'plan', state);
     const el = mkNode(n, 'plan', shiftedNodeIds.has(n.id));
-    el.style.cssText = `left:${n.col * COL + COL / 2 - 14}px;top:${y - 14}px`;
+    el.style.cssText = `left:${x - 14}px;top:${y - 14}px`;
     grp.appendChild(el);
-    addDrsDetailLabel(grp, n, n.col * COL + COL / 2, y, state);
   });
 
   state.branchNodes.forEach(n => {
     const laneIdx = findPlanLaneIndex(state, 'branch', n.branchId);
     if (laneIdx < 0) return;
     const y = getTopOffset(state) + laneIdx * ROH + ROH / 2;
+    const x = getStageVisualX(n, 'branch', state);
     const el = mkNode(n, 'branch', shiftedNodeIds.has(n.id));
-    el.style.cssText = `left:${n.col * COL + COL / 2 - 14}px;top:${y - 14}px`;
+    el.style.cssText = `left:${x - 14}px;top:${y - 14}px`;
     grp.appendChild(el);
-    addDrsDetailLabel(grp, n, n.col * COL + COL / 2, y, state);
   });
 
   state.actualNodes.forEach(n => {
     const laneIdx = findActualLaneIndex(state, 'actual', n.variantId);
     if (laneIdx < 0) return;
     const y = getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2;
+    const x = getStageVisualX(n, 'actual', state);
     const el = mkNode(n, 'actual', shiftedNodeIds.has(n.id));
-    el.style.cssText = `left:${n.col * COL + COL / 2 - 14}px;top:${y - 14}px`;
+    el.style.cssText = `left:${x - 14}px;top:${y - 14}px`;
     grp.appendChild(el);
-    addDrsDetailLabel(grp, n, n.col * COL + COL / 2, y, state);
   });
 
   state.actualBranchNodes.forEach(n => {
     const laneIdx = findActualLaneIndex(state, 'branch', n.branchId);
     if (laneIdx < 0) return;
     const y = getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2;
+    const x = getStageVisualX(n, 'actualBranch', state);
     const el = mkNode(n, 'actualBranch', shiftedNodeIds.has(n.id));
-    el.style.cssText = `left:${n.col * COL + COL / 2 - 14}px;top:${y - 14}px`;
+    el.style.cssText = `left:${x - 14}px;top:${y - 14}px`;
     grp.appendChild(el);
-    addDrsDetailLabel(grp, n, n.col * COL + COL / 2, y, state);
   });
 
   renderStageShiftNodes(grp, state);
+  renderDrsSummaryBox(grp, state);
   updateMergeTargetClasses();
-}
-
-function addDrsDetailLabel(grp, node, x, y, state) {
-  const text = String(node.drsDetail || '').trim();
-  if (!node.isDRS || !text) return;
-  const el = document.createElement('div');
-  el.className = 'drs-detail-label';
-  el.dataset.labelKey = `drs:${node.id}`;
-  el.title = text;
-  el.textContent = text;
-  const labelWidth = 240;
-  const gridW = totalCols(state) * COL;
-  const rightFits = x + 22 + labelWidth < gridW;
-  const defaultPos = { x: rightFits ? x + 22 : Math.max(4, x - labelWidth - 22), y: y + 12 };
-  const pos = state.labelPositions[`drs:${node.id}`] || defaultPos;
-  el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
-  el.addEventListener('mousedown', startDrsLabelDrag);
-  grp.appendChild(el);
 }
 
 function mkNode(n, rType, hasShift) {
   const el = document.createElement('div');
+  const readOnly = isSnapshotReadOnlyMode();
   const cls = rType === 'plan' ? 'plan-node' : rType === 'branch' ? 'branch-node' : 'actual-node';
-  el.className = 'node ' + cls;
+  el.className = 'node ' + cls + (readOnly ? ' readonly-node' : '');
   el.dataset.nodeId = n.id;
   el.dataset.rType = rType;
   if (n.variantId) el.dataset.variantId = n.variantId;
   if (n.branchId) el.dataset.branchId = n.branchId;
 
   const dh = isActualStageContext(rType) && n.date ? `<span class="node-date">${fmtActualDate(n.date)}</span>` : '';
-  const shape = n.type === 'circle' ? 'circle' : 'square';
   el.innerHTML = `
     <span class="node-label-top">${escapeHtml(n.topLabel || '')}</span>
-    <div class="node-shape ${shape}"></div>
+    ${getStageVisualMarkup(n.type, `node-${n.id}`)}
     <span class="node-label-bottom">${escapeHtml(n.bottomLabel || '')}</span>
-    ${dh}${hasShift ? '<span class="node-shift-cross">×</span>' : ''}<button class="node-del">✕</button>`;
+    ${dh}${hasShift ? '<span class="node-shift-cross">×</span>' : ''}${readOnly ? '' : '<button class="node-del">✕</button>'}`;
 
-  el.querySelector('.node-del').addEventListener('click', e => {
-    e.stopPropagation();
-    const a = store.getState();
-    if (rType === 'plan') { a.removePlanNode(n.id); a.removeMergeLinksForNode(n.id); }
-    else if (rType === 'branch') { a.removeBranchNode(n.id); a.removeMergeLinksForNode(n.id); }
-    else if (rType === 'actualBranch') { a.removeActualBranchNode(n.id); a.removeActualMergeLinksForNode(n.id); }
-    else { a.removeActualNode(n.id); a.removeActualMergeLinksForNode(n.id); }
-    if (mergePick && mergePick.fromNodeId === n.id) clearMergePick();
-    const s = store.getState();
-    renderGrid(s); renderNodes(s); persistDraftNow();
-  });
+  if (!readOnly) {
+    el.querySelector('.node-del').addEventListener('click', e => {
+      e.stopPropagation();
+      const a = store.getState();
+      if (rType === 'plan') { a.removePlanNode(n.id); a.removeMergeLinksForNode(n.id); }
+      else if (rType === 'branch') { a.removeBranchNode(n.id); a.removeMergeLinksForNode(n.id); }
+      else if (rType === 'actualBranch') { a.removeActualBranchNode(n.id); a.removeActualMergeLinksForNode(n.id); }
+      else { a.removeActualNode(n.id); a.removeActualMergeLinksForNode(n.id); }
+      if (mergePick && mergePick.fromNodeId === n.id) clearMergePick();
+      const s = store.getState();
+      renderGrid(s); renderNodes(s); persistDraftNow();
+    });
 
-  el.addEventListener('click', e => handleMergeTargetClick(e, n, rType));
-  el.addEventListener('mousedown', startNodeDrag);
-  el.addEventListener('contextmenu', e => { e.preventDefault(); showCtx(e, n.id, rType); });
+    el.addEventListener('click', e => handleMergeTargetClick(e, n, rType));
+    el.addEventListener('mousedown', startNodeDrag);
+    el.addEventListener('contextmenu', e => { e.preventDefault(); showCtx(e, n.id, rType); });
+  }
   return el;
 }
 
@@ -1886,37 +2685,17 @@ function renderStageShiftNodes(grp, state) {
     const el = mkShiftedNode(source, shift);
     el.style.cssText = `left:${target.x - 14}px;top:${target.y - 14}px`;
     grp.appendChild(el);
-    addShiftDrsDetailLabel(grp, shift, target.x, target.y, state);
   });
-}
-
-function addShiftDrsDetailLabel(grp, shift, x, y, state) {
-  const text = String(shift.drsDetail || '').trim();
-  if (!text) return;
-  const el = document.createElement('div');
-  el.className = 'drs-detail-label shift-drs-detail-label';
-  el.dataset.labelKey = `shift-drs:${shift.id}`;
-  el.title = text;
-  el.textContent = text;
-  const labelWidth = 240;
-  const gridW = totalCols(state) * COL;
-  const rightFits = x + 28 + labelWidth < gridW;
-  const defaultPos = { x: rightFits ? x + 28 : Math.max(4, x - labelWidth - 28), y: Math.max(4, y - 38) };
-  const pos = state.labelPositions[`shift-drs:${shift.id}`] || defaultPos;
-  el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
-  el.addEventListener('mousedown', startDrsLabelDrag);
-  grp.appendChild(el);
 }
 
 function mkShiftedNode(source, shift) {
   const el = document.createElement('div');
-  const shape = source.type === 'circle' ? 'circle' : 'square';
   el.className = `node shifted-node shifted-${shift.mode}`;
   el.dataset.sourceNodeId = shift.sourceNodeId;
   el.dataset.shiftId = shift.id;
   el.innerHTML = `
     <span class="node-label-top">${escapeHtml(source.topLabel || '')}</span>
-    <div class="node-shape ${shape}"></div>
+    ${getStageVisualMarkup(source.type, `shift-${shift.id}`)}
     <span class="node-label-bottom">${escapeHtml(source.bottomLabel || '')}</span>
     ${shift.targetDate ? `<span class="node-date">${fmtDate(shift.targetDate)}</span>` : ''}`;
   return el;
@@ -1924,21 +2703,26 @@ function mkShiftedNode(source, shift) {
 
 function renderBottomTables(state) {
   state = state || store.getState();
+  const readOnly = isSnapshotReadOnlyMode();
   renderDynTable('msTableWrap', state.leftTable, {
     updateCell: (ri, ci, v) => { store.getState().updateLeftTableCell(ri, ci, v); renderMilestoneTableOverlay(store.getState()); scheduleDraftSave(); },
     updateColName: (ci, name) => { store.getState().updateLeftTableColName(ci, name); renderMilestoneTableOverlay(store.getState()); scheduleDraftSave(); },
     deleteCol: (ci) => { store.getState().deleteLeftTableCol(ci); renderBottomTables(); renderMilestoneTableOverlay(store.getState()); persistDraftNow(); },
     deleteRow: (ri) => { store.getState().deleteLeftTableRow(ri); renderBottomTables(); renderMilestoneTableOverlay(store.getState()); persistDraftNow(); },
-  });
+  }, { readOnly });
   renderDynTable('eopTableWrap', state.rightTable, {
     updateCell: (ri, ci, v) => { store.getState().updateRightTableCell(ri, ci, v); scheduleDraftSave(); },
     updateColName: (ci, name) => { store.getState().updateRightTableColName(ci, name); scheduleDraftSave(); },
     deleteCol: (ci) => { store.getState().deleteRightTableCol(ci); renderBottomTables(); persistDraftNow(); },
     deleteRow: (ri) => { store.getState().deleteRightTableRow(ri); renderBottomTables(); persistDraftNow(); },
-  });
+  }, { allowColumnEdit: false, allowColumnDelete: false, readOnly });
 }
 
-function renderDynTable(wrapId, tbl, cbs) {
+function renderDynTable(wrapId, tbl, cbs, options = {}) {
+  const readOnly = !!options.readOnly;
+  const allowColumnEdit = !readOnly && options.allowColumnEdit !== false;
+  const allowColumnDelete = !readOnly && options.allowColumnDelete !== false;
+  const allowRowDelete = !readOnly;
   const wrap = $(wrapId);
   wrap.innerHTML = '';
   const table = document.createElement('table');
@@ -1950,12 +2734,14 @@ function renderDynTable(wrapId, tbl, cbs) {
     const th = document.createElement('th');
     th.className = 'dyn-th';
     const sp = document.createElement('span');
-    sp.contentEditable = 'true';
-    sp.className = 'th-name';
+    sp.contentEditable = allowColumnEdit ? 'true' : 'false';
+    sp.className = 'th-name' + (allowColumnEdit ? '' : ' readonly');
     sp.textContent = col;
-    sp.addEventListener('blur', () => cbs.updateColName(ci, sp.textContent.trim()));
+    if (allowColumnEdit) {
+      sp.addEventListener('blur', () => cbs.updateColName(ci, sp.textContent.trim()));
+    }
     th.appendChild(sp);
-    if (ci > 0) {
+    if (allowColumnDelete && ci > 0) {
       const dx = document.createElement('button');
       dx.className = 'col-del';
       dx.textContent = '×';
@@ -1980,28 +2766,33 @@ function renderDynTable(wrapId, tbl, cbs) {
         inp.type = 'month';
         inp.value = cell || '';
         inp.className = 'dyn-date-input';
-        inp.addEventListener('change', () => cbs.updateCell(ri, ci, inp.value));
+        inp.disabled = readOnly;
+        if (!readOnly) inp.addEventListener('change', () => cbs.updateCell(ri, ci, inp.value));
         td.appendChild(inp);
       } else {
         td.className = 'dyn-td' + (cell ? ' filled' : '');
-        td.contentEditable = 'true';
+        td.contentEditable = readOnly ? 'false' : 'true';
         td.textContent = cell;
-        td.addEventListener('input', () => {
-          cbs.updateCell(ri, ci, td.textContent.trim());
-          td.classList.toggle('filled', !!td.textContent.trim());
-        });
+        if (!readOnly) {
+          td.addEventListener('input', () => {
+            cbs.updateCell(ri, ci, td.textContent.trim());
+            td.classList.toggle('filled', !!td.textContent.trim());
+          });
+        }
       }
       tr.appendChild(td);
     });
 
-    const tdx = document.createElement('td');
-    tdx.className = 'dyn-td row-del-cell';
-    const rdx = document.createElement('button');
-    rdx.className = 'row-del';
-    rdx.textContent = '×';
-    rdx.addEventListener('click', () => cbs.deleteRow(ri));
-    tdx.appendChild(rdx);
-    tr.appendChild(tdx);
+    if (allowRowDelete) {
+      const tdx = document.createElement('td');
+      tdx.className = 'dyn-td row-del-cell';
+      const rdx = document.createElement('button');
+      rdx.className = 'row-del';
+      rdx.textContent = '×';
+      rdx.addEventListener('click', () => cbs.deleteRow(ri));
+      tdx.appendChild(rdx);
+      tr.appendChild(tdx);
+    }
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
@@ -2033,26 +2824,127 @@ function addVariantLabel(key, variantId, text, defaultX, defaultY, mode, state) 
   const del = document.createElement('button');
   del.className = 'vfl-del';
   del.textContent = '×';
-  del.addEventListener('click', event => {
-    event.stopPropagation();
-    window.deleteVariant(variantId);
-  });
-  el.appendChild(del);
-  el.addEventListener('mousedown', startVLabelDrag);
+  if (!isSnapshotReadOnlyMode()) {
+    del.addEventListener('click', event => {
+      event.stopPropagation();
+      window.deleteVariant(variantId);
+    });
+    el.appendChild(del);
+    el.addEventListener('mousedown', startVLabelDrag);
+  }
   tlGrid.appendChild(el);
 }
 
-function renderCanvasRemarks(state) {
-  tlGrid.querySelectorAll('.canvas-remark').forEach(e => e.remove());
-  if (!state.remarks) return;
+function splitSummaryLines(value) {
+  return String(value || '')
+    .split(/[\r\n\u2028\u2029]+/)
+    .map(line => line.trim())
+    .filter(Boolean);
+}
+
+function getRemarkSummaryItems(state) {
+  return splitSummaryLines(state && state.remarks).map(text => ({ text }));
+}
+
+function getStageContextSummaryLabel(rType) {
+  if (rType === 'plan') return 'Plan';
+  if (rType === 'branch') return 'Branch Plan';
+  if (rType === 'actual') return 'Actual';
+  if (rType === 'actualBranch') return 'Branch Actual';
+  return '';
+}
+
+function getVariantSummaryName(state, variantId) {
+  const variant = (state.variants || []).find(v => v.id === variantId);
+  return variant ? variant.name : '';
+}
+
+function getBranchSummaryName(state, rType, branchId) {
+  const branches = rType === 'actualBranch' ? (state.actualBranches || []) : (state.branches || []);
+  const branch = branches.find(b => b.id === branchId);
+  return branch ? branch.label : '';
+}
+
+function getStageSummaryName(node) {
+  return (node && (node.topLabel || node.bottomLabel || node.date || node.id)) || '';
+}
+
+function getStageSummaryLabel(state, rType, node) {
+  const owner = rType === 'plan' || rType === 'actual'
+    ? getVariantSummaryName(state, node && node.variantId)
+    : getBranchSummaryName(state, rType, node && node.branchId);
+  return [getStageContextSummaryLabel(rType), owner, getStageSummaryName(node)].filter(Boolean).join(' / ');
+}
+
+function collectDrsSummaryItems(state) {
+  const items = [];
+  [
+    ['plan', state.planNodes || []],
+    ['branch', state.branchNodes || []],
+    ['actual', state.actualNodes || []],
+    ['actualBranch', state.actualBranchNodes || []],
+  ].forEach(([rType, nodes]) => {
+    nodes.forEach(node => {
+      const text = String(node.drsDetail || '').trim();
+      if (!node.isDRS || !text) return;
+      items.push({ label: getStageSummaryLabel(state, rType, node), text });
+    });
+  });
+  (state.stageShifts || []).forEach(shift => {
+    const text = String(shift.drsDetail || '').trim();
+    if (!text) return;
+    const source = findStageByContext(state, shift.sourceContext, shift.sourceNodeId);
+    const mode = shift.mode === 'preponed' ? 'Preponed Shift' : 'Postponed Shift';
+    const label = source
+      ? [mode, getStageSummaryLabel(state, shift.sourceContext, source)].filter(Boolean).join(' / ')
+      : mode;
+    items.push({ label, text });
+  });
+  return items;
+}
+
+function makeTimelineSummaryBox(title, items, className) {
   const el = document.createElement('div');
-  el.className = 'canvas-remark';
-  const defaultY = getTopOffset(state) + getPlannedH(state) + 4 + ROH / 2 + 18;
-  const pos = state.remarkPosition || { x: 120, y: defaultY };
+  el.className = `timeline-summary-box ${className}`;
+  const titleEl = document.createElement('div');
+  titleEl.className = 'timeline-summary-title';
+  titleEl.textContent = title;
+  el.appendChild(titleEl);
+  const list = document.createElement('ol');
+  list.className = 'timeline-summary-list';
+  items.forEach(item => {
+    const li = document.createElement('li');
+    li.textContent = item.label ? `${item.label}: ${item.text}` : item.text;
+    list.appendChild(li);
+  });
+  el.appendChild(list);
+  return el;
+}
+
+function renderCanvasRemarks(state) {
+  tlGrid.querySelectorAll('.remarks-summary-box').forEach(e => e.remove());
+  const items = getRemarkSummaryItems(state);
+  if (!items.length) return;
+  const el = makeTimelineSummaryBox('Remarks', items, 'canvas-remark remarks-summary-box');
+  const defaultPos = getFutureActualBlankSpacePoint(state, new Date(), 18);
+  const pos = state.remarkPosition || defaultPos;
   el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
-  el.textContent = state.remarks;
-  el.addEventListener('mousedown', startRemarkDrag);
+  if (!isSnapshotReadOnlyMode()) el.addEventListener('mousedown', startRemarkDrag);
   tlGrid.appendChild(el);
+}
+
+function renderDrsSummaryBox(grp, state) {
+  grp.querySelectorAll('.drs-summary-box').forEach(e => e.remove());
+  const items = collectDrsSummaryItems(state);
+  if (!items.length) return;
+  const el = makeTimelineSummaryBox('DRS Details', items, 'drs-summary-box');
+  el.dataset.labelKey = 'drs:summary';
+  const futurePoint = getFutureActualBlankSpacePoint(state, new Date(), -22);
+  const defaultPos = { x: Math.max(4, futurePoint.x), y: Math.max(4, futurePoint.y) };
+  const pos = (state.labelPositions || {})['drs:summary'] || defaultPos;
+  el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
+  if (!isSnapshotReadOnlyMode()) el.addEventListener('mousedown', startDrsLabelDrag);
+  grp.appendChild(el);
 }
 
 function renderMilestoneTableOverlay(state) {
@@ -2064,7 +2956,7 @@ function renderMilestoneTableOverlay(state) {
   const el = document.createElement('div');
   el.className = 'milestone-grid-table';
   el.dataset.labelKey = 'milestone:table';
-  const defaultPos = { x: 132, y: getTopOffset(state) + 14 };
+  const defaultPos = getFutureActualBlankSpacePoint(state, new Date(), 44);
   const pos = state.labelPositions['milestone:table'] || defaultPos;
   el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
 
@@ -2097,7 +2989,7 @@ function renderMilestoneTableOverlay(state) {
   table.appendChild(tbody);
   el.appendChild(table);
 
-  el.addEventListener('mousedown', startMilestoneTableDrag);
+  if (!isSnapshotReadOnlyMode()) el.addEventListener('mousedown', startMilestoneTableDrag);
   tlGrid.appendChild(el);
 }
 
@@ -2198,18 +3090,19 @@ async function exportPDF() {
   let pageRoot = null;
   await new Promise(r => setTimeout(r, 160));
   try {
+    const exportState = getTimelineRenderState();
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const pW = pdf.internal.pageSize.getWidth(), pH = pdf.internal.pageSize.getHeight(), mg = 8;
     const maxW = pW - mg * 2, maxH = pH - mg * 2;
     const sidebarWidth = Math.ceil($('sidebar').getBoundingClientRect().width || $('sidebar').scrollWidth || 360);
-    const timelineWidth = totalCols(store.getState()) * COL;
-    const gridHeight = Math.ceil(tlGrid.scrollHeight || tlGrid.getBoundingClientRect().height || getGridGroupH(store.getState()));
+    const timelineWidth = totalCols(exportState) * COL;
+    const gridHeight = Math.ceil(tlGrid.scrollHeight || tlGrid.getBoundingClientRect().height || getGridGroupH(exportState));
     const headerHeight = YH + MH;
     const pxPerMm = 4;
     const timelinePageWidth = Math.max(COL, Math.floor(maxW * pxPerMm - sidebarWidth));
     const slice = getPdfTimelineSlice({
-      totalCols: totalCols(store.getState()),
+      totalCols: totalCols(exportState),
       colWidth: COL,
       timelineWidthPx: timelinePageWidth,
       horizontalScale: PDF_EXPORT_HORIZONTAL_SCALE,
@@ -2235,7 +3128,7 @@ async function exportPDF() {
     const iW = canvas.width * ratio, iH = canvas.height * ratio;
     pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', mg + (maxW - iW) / 2, mg + (maxH - iH) / 2, iW, iH);
     st.textContent = 'Building PDF…';
-    pdf.save(`${store.getState().info.project || 'timeline'}_A4.pdf`);
+    pdf.save(`${exportState.info.project || 'timeline'}_A4.pdf`);
     st.textContent = 'Done!';
     setTimeout(() => overlay.classList.remove('active'), 700);
   } catch (err) {
@@ -2273,6 +3166,11 @@ function bindHeader() {
   $('fStatus').value = info.status;
   $('remarksBox').textContent = remarks || '';
   syncPubBtn();
+  refreshTimelineVersionPicker();
+
+  $('timelineVersionSelect').addEventListener('change', e => {
+    selectTimelineVersion(e.target.value);
+  });
 
   const map = { fProject: 'project', fLocation: 'location', fPlant: 'plant', fProjType: 'type', fStatus: 'status' };
   Object.entries(map).forEach(([id, key]) => {
@@ -2284,6 +3182,7 @@ function bindHeader() {
   });
 
   $('publishToggle').addEventListener('click', () => {
+    if (isSnapshotReadOnlyMode()) return;
     store.getState().setPublished(!store.getState().info.published);
     syncPubBtn();
     persistDraftNow();
@@ -2292,21 +3191,26 @@ function bindHeader() {
   $('revertDraftBtn').addEventListener('click', revertDraftToBaseline);
 
   $('remarksBox').addEventListener('input', () => {
-    store.getState().setRemarks($('remarksBox').textContent.trim());
-    renderCanvasRemarks(store.getState());
+    if (isSnapshotReadOnlyMode()) return;
+    const remarksText = ($('remarksBox').innerText || $('remarksBox').textContent || '')
+      .replace(/\r\n?/g, '\n')
+      .trim();
+    store.getState().setRemarks(remarksText);
+    renderAll();
     scheduleDraftSave();
   });
 }
 
-function syncPubBtn() {
+function syncPubBtn(state = getTimelineRenderState()) {
   const btn = $('publishToggle');
-  const pub = store.getState().info.published;
+  const pub = state.info && state.info.published;
   btn.textContent = pub ? '✓ Published' : 'Not Publish';
   btn.classList.toggle('published', pub);
 }
 
 // ── Cell click → open node popup ──
 function onCellClick(e) {
+  if (isSnapshotReadOnlyMode()) return;
   if (e.target.closest('.node')) return;
   if (mergePick) { clearMergePick(); return; }
   const cell = e.currentTarget;
@@ -2328,7 +3232,7 @@ function onCellClick(e) {
   $('npTop').value = '';
   $('npBottom').value = '';
   $('npDate').value = isActualStageContext(rType) ? colToInputDate(col, state) : colToInputMonth(col, state);
-  $('npShape').value = $('nodeTypeSelect').value;
+  setStageIconSelectValue($('npShape'), $('nodeTypeSelect').value);
   $('npIsDRS').checked = false;
   $('npDrsDetail').style.display = 'none';
   $('npDrsDetail').value = '';
@@ -2351,13 +3255,14 @@ $('npIsDRS').addEventListener('change', () => {
 });
 
 $('npConfirm').addEventListener('click', () => {
+  if (isSnapshotReadOnlyMode()) return;
   if (!pendCell) return;
   const { col, vId, rType, branchId } = pendCell;
   const a = store.getState();
   const date = $('npDate').value;
   if (date) a.ensureYearVisible(date);
   const prepared = createStageNodeData(store.getState(), rType, col, {
-    type: $('npShape').value,
+    type: normalizeStageIconId($('npShape').value),
     topLabel: $('npTop').value.trim(),
     bottomLabel: $('npBottom').value,
     date,
@@ -2376,8 +3281,7 @@ $('npConfirm').addEventListener('click', () => {
 
   nodePopup.classList.remove('active');
   pendCell = null;
-  const s = store.getState();
-  renderGrid(s); renderNodes(s); persistDraftNow();
+  renderAll(); persistDraftNow();
 });
 
 $('npCancel').addEventListener('click', () => {
@@ -2387,6 +3291,7 @@ $('npCancel').addEventListener('click', () => {
 
 // ── Context menu ──
 function showCtx(e, nodeId, rType) {
+  if (isSnapshotReadOnlyMode()) return;
   ctxId = nodeId; ctxRowType = rType; ctxCell = null;
   const state = store.getState();
   const planNode = rType === 'plan' ? state.planNodes.find(n => n.id === nodeId) : null;
@@ -2412,6 +3317,7 @@ function showCtx(e, nodeId, rType) {
 
 function showCellCtx(e) {
   e.preventDefault();
+  if (isSnapshotReadOnlyMode()) return;
   const cell = e.currentTarget;
   const col = +cell.dataset.col;
   const vId = cell.dataset.vId;
@@ -2434,6 +3340,7 @@ function showCellCtx(e) {
 }
 
 $('ctxBranch').addEventListener('click', () => {
+  if (isSnapshotReadOnlyMode()) return;
   ctxMenu.classList.remove('active');
   const state = store.getState();
   const isActual = ctxRowType === 'actual' || ctxRowType === 'actualCell';
@@ -2463,6 +3370,7 @@ $('ctxBranch').addEventListener('click', () => {
 });
 
 $('ctxMerge').addEventListener('click', e => {
+  if (isSnapshotReadOnlyMode()) return;
   e.stopPropagation();
   ctxMenu.classList.remove('active');
   const isActual = ctxRowType === 'actualBranch';
@@ -2510,6 +3418,7 @@ $('ctxPreponed').addEventListener('click', () => openStageShiftModal('preponed')
 $('ctxPostponed').addEventListener('click', () => openStageShiftModal('postponed'));
 
 function openStageShiftModal(mode) {
+  if (isSnapshotReadOnlyMode()) return;
   ctxMenu.classList.remove('active');
   const state = store.getState();
   const source = findStageByContext(state, ctxRowType, ctxId);
@@ -2562,6 +3471,7 @@ function planBottomOptions(selected) {
 }
 
 function openStageEditModal(node, rType) {
+  if (isSnapshotReadOnlyMode()) return;
   if (!node) return;
   nodePopup.classList.remove('active');
   const isActual = isActualStageContext(rType);
@@ -2596,6 +3506,7 @@ function openStageEditModal(node, rType) {
 }
 
 $('ctxDelete').addEventListener('click', () => {
+  if (isSnapshotReadOnlyMode()) return;
   ctxMenu.classList.remove('active');
   if (!ctxId) return;
   const a = store.getState();
@@ -2630,6 +3541,7 @@ function clearMergePick() {
 }
 
 function handleMergeTargetClick(e, node, rType) {
+  if (isSnapshotReadOnlyMode()) return false;
   if (!mergePick) return false;
   e.preventDefault();
   e.stopPropagation();
@@ -2651,6 +3563,7 @@ function handleMergeTargetClick(e, node, rType) {
 
 // ── Variants ──
 $('addVariantBtn').addEventListener('click', () => {
+  if (isSnapshotReadOnlyMode()) return;
   const name = $('variantInput').value.trim();
   if (!name) return;
   store.getState().addVariant(name);
@@ -2659,10 +3572,11 @@ $('addVariantBtn').addEventListener('click', () => {
 });
 
 $('variantInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter') $('addVariantBtn').click();
+  if (e.key === 'Enter' && !isSnapshotReadOnlyMode()) $('addVariantBtn').click();
 });
 
 window.deleteVariant = (id) => {
+  if (isSnapshotReadOnlyMode()) return;
   if (!confirm('Delete this variant and all its stages?')) return;
   const branchIds = new Set(store.getState().branches.filter(b => b.variantId === id).map(b => b.id));
   store.getState().deleteVariant(id);
@@ -2671,12 +3585,15 @@ window.deleteVariant = (id) => {
 };
 
 // ── Bottom table buttons ──
-$('addMsRowBtn').addEventListener('click', () => { store.getState().addLeftTableRow(); renderBottomTables(); persistDraftNow(); });
-$('addMsColBtn').addEventListener('click', () => { store.getState().addLeftTableCol(); renderBottomTables(); persistDraftNow(); });
-$('addEopRowBtn').addEventListener('click', () => { store.getState().addRightTableRow(); renderBottomTables(); persistDraftNow(); });
-$('addEopColBtn').addEventListener('click', () => { store.getState().addRightTableCol(); renderBottomTables(); persistDraftNow(); });
+$('addMsRowBtn').addEventListener('click', () => { if (isSnapshotReadOnlyMode()) return; store.getState().addLeftTableRow(); renderBottomTables(); persistDraftNow(); });
+$('addMsColBtn').addEventListener('click', () => { if (isSnapshotReadOnlyMode()) return; store.getState().addLeftTableCol(); renderBottomTables(); persistDraftNow(); });
+$('addEopRowBtn').addEventListener('click', () => { if (isSnapshotReadOnlyMode()) return; store.getState().addRightTableRow(); renderBottomTables(); persistDraftNow(); });
+const addEopColBtn = $('addEopColBtn');
+addEopColBtn.hidden = true;
+addEopColBtn.disabled = true;
 
 $('copyActualBtn').addEventListener('click', () => {
+  if (isSnapshotReadOnlyMode()) return;
   store.getState().copyPlanToActual();
   renderAll();
   persistDraftNow();
@@ -2686,6 +3603,7 @@ $('copyActualBtn').addEventListener('click', () => {
 
 // ── Drag nodes ──
 function startNodeDrag(e) {
+  if (isSnapshotReadOnlyMode()) return;
   if (e.target.classList.contains('node-del')) return;
   if (e.button !== 0) return;
   if (mergePick) return;
@@ -2751,6 +3669,7 @@ function onNodeUp(e) {
 
 // ── Drag variant labels ──
 function startVLabelDrag(e) {
+  if (isSnapshotReadOnlyMode()) return;
   if (e.target.classList.contains('vfl-del')) return;
   e.preventDefault();
   dragVL = e.currentTarget;
@@ -2787,6 +3706,7 @@ function onVLUp(e) {
 
 // ── Drag remarks ──
 function startRemarkDrag(e) {
+  if (isSnapshotReadOnlyMode()) return;
   e.preventDefault();
   dragRemark = e.currentTarget;
   const r = dragRemark.getBoundingClientRect();
@@ -2819,6 +3739,7 @@ function onRemarkUp(e) {
 
 // ── Drag milestone table ──
 function startMilestoneTableDrag(e) {
+  if (isSnapshotReadOnlyMode()) return;
   e.preventDefault();
   dragMilestoneTable = e.currentTarget;
   const r = dragMilestoneTable.getBoundingClientRect();
@@ -2854,6 +3775,7 @@ function onMilestoneTableUp(e) {
 
 // ── Drag DRS detail labels ──
 function startDrsLabelDrag(e) {
+  if (isSnapshotReadOnlyMode()) return;
   e.preventDefault();
   e.stopPropagation();
   dragDrsLabel = e.currentTarget;
@@ -2899,12 +3821,14 @@ $('themeToggleBtn').addEventListener('click', () => {
 
 // ── Add year ──
 $('addYearBtn').addEventListener('click', () => {
+  if (isSnapshotReadOnlyMode()) return;
   store.getState().addYear();
   renderAll(); persistDraftNow();
 });
 
 // ── Submit / Back ──
 $('submitBtn').addEventListener('click', async () => {
+  if (isSnapshotReadOnlyMode()) return;
   const state = store.getState();
   if (getMilestoneTableRows(state).rows.length) {
     store.getState().showMilestoneTable();
@@ -2913,7 +3837,7 @@ $('submitBtn').addEventListener('click', async () => {
   }
   const parsedEopItems = parseEopItems(state);
   if (!parsedEopItems.length) {
-    alert('Enter at least one EOP date in a Date/Month column as YYYY-MM (use the month picker).');
+    alert('Enter at least one EOP detail or EOP date.');
     return;
   }
   parsedEopItems.forEach(item => store.getState().ensureYearVisible(item.date));
@@ -2925,22 +3849,19 @@ $('submitBtn').addEventListener('click', async () => {
 
   const draft = captureState();
   const baseline = getBaselineState();
-  if (!isDirty(draft, baseline)) {
-    updateDraftStatus('Already saved');
-    setTimeout(() => updateDraftStatus(), 1400);
-    return;
-  }
+  const submittedAt = new Date().toISOString();
 
   const submitBtn = $('submitBtn');
   submitBtn.disabled = true;
   submitBtn.textContent = 'Saving…';
   try {
-    const result = await saveDraftToDataverse(draft, baseline);
+    const result = await saveDraftToDataverse(draft, baseline, submittedAt);
     const submitted = adoptProjectId(result && result.projectId, draft);
     const keys = getCurrentStorageKeys();
     writeLocalJson(keys.baseline, submitted);
     writeLocalJson(keys.draft, submitted);
     store.getState().replaceState(submitted);
+    syncTimelineVersionsFromSaveResult(result);
     syncHeaderInputsFromState();
     updateDraftStatus(result && result.developmentOnly ? 'Saved locally for Dataverse' : 'Saved');
     setTimeout(() => updateDraftStatus(), 1800);
@@ -2949,7 +3870,7 @@ $('submitBtn').addEventListener('click', async () => {
     updateDraftStatus('Save failed');
     alert('Could not save to Dataverse. Your local draft is still saved in this browser.');
   } finally {
-    submitBtn.disabled = false;
+    submitBtn.disabled = isSnapshotReadOnlyMode();
     submitBtn.textContent = 'Submit';
   }
 });
@@ -3023,9 +3944,52 @@ $('modalCancel').addEventListener('click', closeModal);
 $('modalClose').addEventListener('click', closeModal);
 $('modalOverlay').addEventListener('click', e => { if (e.target === $('modalOverlay')) closeModal(); });
 
-// ── Shape select helper ──
-function fillShapeSelect(selectEl) {
-  selectEl.innerHTML = NODE_SHAPES.map(s => `<option value="${s.value}">${s.label}</option>`).join('');
+// ── Stage logo picker helper ──
+function normalizeStagePickerIconId(iconId) {
+  const icon = getStageIcon(iconId);
+  return icon ? icon.id : getDefaultStageIconId();
+}
+
+function getStageIconPickerForSelect(selectEl) {
+  if (!selectEl) return null;
+  return $(`${selectEl.id}Picker`);
+}
+
+function setStageIconSelectValue(selectEl, iconId) {
+  if (!selectEl) return;
+  selectEl.value = normalizeStagePickerIconId(iconId);
+  updateStageIconPickerSelection(selectEl, getStageIconPickerForSelect(selectEl));
+}
+
+function updateStageIconPickerSelection(selectEl, pickerEl) {
+  if (!selectEl || !pickerEl) return;
+  const selected = normalizeStagePickerIconId(selectEl.value);
+  pickerEl.querySelectorAll('.stage-icon-option').forEach(btn => {
+    const active = btn.dataset.stageIcon === selected;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+}
+
+function fillStageIconSelect(selectEl) {
+  selectEl.innerHTML = STAGE_ICONS.map(icon => `<option value="${escapeHtml(icon.id)}">${escapeHtml(icon.label)}</option>`).join('');
+  setStageIconSelectValue(selectEl, selectEl.value);
+}
+
+function setupStageIconPicker(selectEl, pickerEl) {
+  if (!selectEl || !pickerEl) return;
+  fillStageIconSelect(selectEl);
+  pickerEl.innerHTML = STAGE_ICONS.map((icon, index) => `
+    <button type="button" class="stage-icon-option" data-stage-icon="${escapeHtml(icon.id)}" title="${escapeHtml(icon.label)}" aria-label="${escapeHtml(icon.label)}">
+      ${makeStageIconSvg(icon, `picker-${pickerEl.id}-${index}`)}
+    </button>`).join('');
+  pickerEl.addEventListener('click', e => {
+    const btn = e.target.closest('.stage-icon-option');
+    if (!btn) return;
+    setStageIconSelectValue(selectEl, btn.dataset.stageIcon);
+  });
+  selectEl.addEventListener('change', () => updateStageIconPickerSelection(selectEl, pickerEl));
+  updateStageIconPickerSelection(selectEl, pickerEl);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -3034,11 +3998,20 @@ function fillShapeSelect(selectEl) {
 
 store.subscribe(scheduleDraftSave);
 
-initPersistenceState();
-bindHeader();
-fillShapeSelect($('nodeTypeSelect'));
-fillShapeSelect($('npShape'));
-renderAll();
-updateDraftStatus();
-syncScroll();
-setupResize();
+async function bootstrap() {
+  await initPersistenceState();
+  bindHeader();
+  setupStageIconPicker($('nodeTypeSelect'), $('nodeTypeSelectPicker'));
+  setupStageIconPicker($('npShape'), $('npShapePicker'));
+  refreshTimelineVersionPicker();
+  renderAll();
+  syncHeaderInputsFromState();
+  updateDraftStatus();
+  syncScroll();
+  setupResize();
+}
+
+bootstrap().catch(err => {
+  console.error(err);
+  alert('Project Tracker failed to initialize.');
+});

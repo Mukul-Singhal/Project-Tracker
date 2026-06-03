@@ -20,10 +20,10 @@ Create these global choice columns first.
 - Branch Plan
 - Branch Actual
 
-### `pt_stageshape`
+### `pt_stagevisualkey`
 
-- Square
-- Circle
+- Configured stage logo ids from `STAGE_ICONS` in `app.js`
+- Legacy values: `square`, `circle`
 
 ### `pt_branchcontext`
 
@@ -52,7 +52,7 @@ Primary name column: `pt_name`
 | Project Type | `pt_projecttype` | Text | No | Example: MC |
 | Status | `pt_status` | Choice `pt_projectstatus` | No | Current status |
 | Published | `pt_published` | Yes/No | No | Publish flag |
-| Discussion Period Date | `pt_discussionperioddate` | Text | No | Discussion month in `YYYY-MM`; currently browser default, future backend input |
+| Discussion Period Date | `pt_discussionperioddate` | Text | No | Discussion cutoff key; supports full `YYYY-MM-DD` from backend and legacy `YYYY-MM` values |
 | EOP Date | `pt_eopdate` | Date only | No | Primary/first parsed EOP month/date |
 | EOP Dates JSON | `pt_eopdatesjson` | Multiple lines of text | No | All parsed EOP markers from the EOP table |
 | Stage Shifts JSON | `pt_stageshiftsjson` | Multiple lines of text | No | Preponed/postponed visual markers for stages, including shift-specific `drsDetail` for new markers |
@@ -71,8 +71,39 @@ Example `Project` rows:
 
 | pt_name | pt_externalid | pt_location | pt_plant | pt_projecttype | pt_status | pt_published | pt_discussionperioddate | pt_eopdate | pt_yearsjson | pt_remarks | pt_milestonetablejson | pt_eoptablejson | pt_layoutjson | pt_lastsubmittedon |
 |---|---|---|---|---|---|---:|---|---|---|---|---|---|---|---|
-| Swift Facelift 2024 | local-1716100000000 | SMG | Plant-C | MC | Delayed | No | 2024-09 | 2025-03-01 | `[2024,2025]` | Review EOP risk monthly | `{"cols":["Milestone","DOM Gas","DOM CNG"],"rows":[["DA","2024-06","2024-07"],["SOS","2024-10","2024-11"]]}` | `{"cols":["Model Detail","Date- month/year"],"rows":[["EOP","Mar 2025"]]}` | `{"labelPositions":{"plan:v1":{"x":50,"y":38}},"remarkPosition":{"x":120,"y":292},"nid":50}` | 2026-05-19 10:30 |
+| Swift Facelift 2024 | local-1716100000000 | SMG | Plant-C | MC | Delayed | No | 2024-06-20 | 2025-03-01 | `[2024,2025]` | Review EOP risk monthly | `{"cols":["Milestone","DOM Gas","DOM CNG"],"rows":[["DA","2024-06","2024-07"],["SOS","2024-10","2024-11"]]}` | `{"cols":["Model Detail","Date- month/year"],"rows":[["EOP","Mar 2025"]]}` | `{"labelPositions":{"plan:v1":{"x":50,"y":38}},"remarkPosition":{"x":120,"y":292},"nid":50}` | 2026-05-19 10:30 |
 | Compact SUV Refresh | local-1716200000000 | Pune | Plant-A | FMC | On Track | Yes | 2025-11 | 2026-08-01 | `[2025,2026]` | Published baseline | `{"cols":["Milestone","EV"],"rows":[["Kickoff","2025-04"]]}` | `{"cols":["Model Detail","Date- month/year"],"rows":[["EOP","Aug 2026"]]}` | `{"labelPositions":{},"remarkPosition":null,"nid":12}` | 2026-05-19 11:00 |
+
+## Table: Project Submit Version
+
+Display name: `Project Submit Version`
+
+Schema/logical name: `pt_projectsubmitversion`
+
+Primary name column: `pt_name`
+
+This table backs the Timeline Version dropdown. Every successful app Submit creates an immutable version row. A backend discussion cutoff date, such as `2024-06-20`, resolves to the latest version whose `pt_submittedon` is on or before that cutoff date at end-of-day.
+
+| Column display name | Logical name | Dataverse type | Required | Notes |
+|---|---|---:|---:|---|
+| Submit Version Name | `pt_name` | Text | Yes | Example: `20 Jun 2024 submit` |
+| External Submit Version Id | `pt_externalid` | Text | Yes | Browser-generated version id; make alternate key |
+| Project | `pt_projectid` | Lookup to `Project` | Yes | Parent project |
+| Submitted On | `pt_submittedon` | Date and time | Yes | Successful Submit timestamp |
+| Discussion Period Date | `pt_discussionperioddate` | Text | No | Full backend cutoff date (`YYYY-MM-DD`) or legacy month (`YYYY-MM`) captured from state |
+| State JSON | `pt_statejson` | Multiple lines of text | Yes | Full normalized app state for read-only historical rendering |
+| Payload JSON | `pt_payloadjson` | Multiple lines of text | Yes | Dataverse-shaped payload generated for that Submit |
+
+Alternate key:
+
+- Composite if available: `pt_projectid + pt_externalid`
+- If not, use text key `pt_submitversionkey` with value format `<projectExternalId>:<submitVersionExternalId>`
+
+Example `Project Submit Version` rows:
+
+| pt_name | pt_externalid | pt_projectid | pt_submittedon | pt_discussionperioddate | pt_submitversionkey |
+|---|---|---|---|---|---|
+| June cutoff submit | submit-1718884800000-local-1716100000000 | Project: Swift Facelift 2024 | 2024-06-20 17:30 | 2024-06-20 | local-1716100000000:submit-1718884800000-local-1716100000000 |
 
 ## Table: Project Variant
 
@@ -167,7 +198,7 @@ Primary name column: `pt_name`
 | Month | `pt_month` | Date only | No | Store Plan months as first day of month if needed; Actual stages may use the exact actual date |
 | Month Text | `pt_monthtext` | Text | No | Plan example: `2024-06`; Actual stage payloads may contain `YYYY-MM-DD` |
 | Column Index | `pt_columnindex` | Whole number | Yes | Timeline grid column |
-| Shape | `pt_shape` | Choice `pt_stageshape` | No | Square/Circle |
+| Stage Visual Key | `pt_shape` | Choice/text-compatible key | No | Stored stage logo id from `STAGE_ICONS`; legacy `square`/`circle` values still render as fallbacks |
 | Top Label | `pt_toplabel` | Text | No | Example: DA |
 | Bottom Label | `pt_bottomlabel` | Text | No | Plan stages use `Beg`, `Mid`, or `End`; Actual stages leave this blank |
 | DRS Available | `pt_isdrs` | Yes/No | No | Whether DRS is available for this stage |
@@ -263,6 +294,7 @@ On Submit, save rows in this order:
 6. Resolve branch parent Plan/Actual stage lookups.
 7. Upsert branch stages.
 8. Upsert `Branch Merge Link`.
+9. Insert a new immutable `Project Submit Version` row with the submitted state JSON and payload JSON.
 
 For the simplest implementation, delete all child records for the project and recreate them on every Submit. That avoids complicated per-row diff logic.
 
@@ -271,8 +303,11 @@ For the simplest implementation, delete all child records for the project and re
 - Use lookup columns for relationships.
 - Use multiple lines of text for JSON fields.
 - Plan stage dates remain month-precision `YYYY-MM`; Actual and Branch Actual stage dates are full `YYYY-MM-DD` values and render on the grid as day plus month.
+- Project `pt_discussionperioddate` accepts backend cutoff dates in `YYYY-MM-DD`; legacy `YYYY-MM` values continue to render by month.
+- Timeline Version dropdown cutoffs are read-only historical views. Resolve each cutoff by querying `Project Submit Version` rows for the same project and selecting the latest `pt_submittedon` at or before that cutoff's end-of-day.
 - `pt_stageshiftsjson` stores visual preponed/postponed markers as `{ id, sourceNodeId, sourceContext, mode, targetDate, targetCol }`. These markers render as shifted stage copies with SVG quadratic Bezier arch arrows and do not replace normal stage records or normal timeline lines.
 - Deleting a Timeline Branch in the browser removes its Branch Plan stages, Branch Actual stages, merge links, and stage shifts whose source stage belonged to that branch.
 - Use alternate keys for browser external ids so Submit can upsert instead of duplicate.
 - Use cascade delete from `Project` to child tables.
-- Dataverse stores the submitted server state. Browser `localStorage` stores the unsaved draft and last submitted baseline.
+- Dataverse stores submitted server state and immutable submit versions. Browser `localStorage` stores the unsaved draft, last submitted baseline, local cutoff dates, and local submit-version history.
+- Frontend bridge contract: `loadProject({ projectId })` should return current state, current discussion date, cutoff date list, and submit-version summaries; `saveProject({ projectId, delta, payload, submitVersion })` should persist the current payload and the immutable version; `getSubmitVersion({ projectId, versionId })` may lazily return a version's full state JSON for snapshot viewing.
