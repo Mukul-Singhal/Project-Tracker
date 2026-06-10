@@ -1,9 +1,15 @@
 {
   "people": [
-    "Mukul Singhal"
+    "Mukul Singhal",
+    "Kushagra Mehta",
+    "Text",
+    "Change",
+    "User",
+    "Ask"
   ],
   "projects": [
-    "Project-Tracker"
+    "project-tracker",
+    "Persistence"
   ],
   "topics": []
 }

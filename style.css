@@ -1587,11 +1587,31 @@ body.snapshot-readonly .row-del {
   color: var(--actual);
 }
 
-/* ── TIMELINE SUMMARY BOXES ── */
-.timeline-summary-box {
+/* ── TIMELINE IN-LANE SUMMARIES ── */
+.timeline-inlane-overlays {
   position: absolute;
+  left: 0;
+  z-index: 6;
+  box-sizing: border-box;
+  padding: 10px 16px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: rgba(219, 232, 245, .38);
+  border-top: 1px solid rgba(122, 170, 200, .4);
+  border-bottom: 1px solid rgba(122, 170, 200, .28);
+  pointer-events: auto;
+}
+
+.timeline-summary-box {
+  position: static;
+  flex: 0 0 320px;
   z-index: 7;
   max-width: 360px;
+  max-height: 166px;
+  overflow: auto;
   padding: 6px 10px;
   border-radius: 8px;
   border: 1px solid rgba(37, 99, 235, .35);
@@ -1603,7 +1623,7 @@ body.snapshot-readonly .row-del {
   white-space: normal;
   overflow-wrap: anywhere;
   box-shadow: 0 4px 16px rgba(15, 23, 42, .12);
-  cursor: move;
+  cursor: default;
   user-select: none;
 }
 
@@ -1628,6 +1648,7 @@ body.snapshot-readonly .row-del {
 
 .drs-summary-box {
   z-index: 8;
+  flex-basis: 380px;
   max-width: 420px;
   border-color: rgba(37, 99, 235, .32);
   background: rgba(232, 240, 249, .94);
@@ -1638,21 +1659,28 @@ body.snapshot-readonly .row-del {
   background: rgba(22, 27, 34, .9);
 }
 
+[data-theme="dark"] .timeline-inlane-overlays {
+  background: rgba(13, 17, 23, .34);
+  border-color: rgba(88, 166, 255, .22);
+}
+
 [data-theme="dark"] .drs-summary-box {
   background: rgba(37, 45, 69, .96);
 }
 
-/* ── MILESTONE TABLE OVERLAY ── */
+/* ── MILESTONE TABLE IN-LANE ITEM ── */
 .milestone-grid-table {
-  position: absolute;
+  position: static;
+  flex: 0 0 420px;
   z-index: 9;
   max-width: 420px;
+  max-height: 166px;
   border: 1px solid rgba(37, 99, 235, .32);
   border-radius: 8px;
-  overflow: hidden;
+  overflow: auto;
   background: rgba(255, 255, 255, .94);
   box-shadow: 0 8px 24px rgba(15, 23, 42, .16);
-  cursor: move;
+  cursor: default;
   user-select: none;
 }
 

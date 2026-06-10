@@ -1,0 +1,23 @@
+{
+  "name": "project-tracker",
+  "version": "1.0.0",
+  "description": "A single-page web application for planning and tracking automotive project model timelines. Visualises plan vs. actual stages on a scrollable month-column grid, with variant lanes, branches, merge links, and EOP tracking. Built for Microsoft Power Pages / Power Apps deployment with one application JavaScript file (`app.js`) and no build step. PDF export uses the two CDN scripts declared in `index.html`.",
+  "main": "app.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mukul-Singhal/Project-Tracker.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Mukul-Singhal/Project-Tracker/issues"
+  },
+  "homepage": "https://github.com/Mukul-Singhal/Project-Tracker#readme"
+}

@@ -786,9 +786,160 @@ function findActualLaneIndex(state, type, id) {
   );
 }
 
-const getPlannedH = (state) => getPlanLanes(state).length * ROH;
-const getActualH = (state) => getActualLanes(state).length * ROH;
 const getDividerH = (state) => state.variants.length ? 4 : 0;
+const TIMELINE_INLANE_OVERLAY_H = 190;
+
+function getTimelineLaneKey(context, id) {
+  return `${context}:${id || ''}`;
+}
+
+function getPlanLaneKey(lane) {
+  return lane && lane.type === 'branch'
+    ? getTimelineLaneKey('branch', lane.branchId)
+    : getTimelineLaneKey('plan', lane && lane.variantId);
+}
+
+function getActualLaneKey(lane) {
+  return lane && lane.type === 'actualBranch'
+    ? getTimelineLaneKey('actualBranch', lane.branchId)
+    : getTimelineLaneKey('actual', lane && lane.variantId);
+}
+
+function getPrimarySummaryLaneKey(state) {
+  const planLane = getPlanLanes(state)[0];
+  if (planLane) return getPlanLaneKey(planLane);
+  const actualLane = getActualLanes(state)[0];
+  if (actualLane) return getActualLaneKey(actualLane);
+  return '';
+}
+
+function splitTimelineSummaryLines(value) {
+  return String(value || '')
+    .split(/[\r\n\u2028\u2029]+/)
+    .map(line => line.trim())
+    .filter(Boolean);
+}
+
+function getStageDrsSummaryLabel(state, rType, node) {
+  const owner = rType === 'plan' || rType === 'actual'
+    ? ((state.variants || []).find(v => v.id === (node && node.variantId)) || {}).name
+    : ((rType === 'actualBranch' ? (state.actualBranches || []) : (state.branches || [])).find(b => b.id === (node && node.branchId)) || {}).label;
+  const name = (node && (node.topLabel || node.bottomLabel || node.date || node.id)) || '';
+  const context = rType === 'branch' ? 'Branch Plan' : rType === 'actualBranch' ? 'Branch Actual' : rType === 'actual' ? 'Actual' : 'Plan';
+  return [context, owner, name].filter(Boolean).join(' / ');
+}
+
+function getDrsLaneKey(rType, node) {
+  if (rType === 'branch') return getTimelineLaneKey('branch', node && node.branchId);
+  if (rType === 'actual') return getTimelineLaneKey('actual', node && node.variantId);
+  if (rType === 'actualBranch') return getTimelineLaneKey('actualBranch', node && node.branchId);
+  return getTimelineLaneKey('plan', node && node.variantId);
+}
+
+function findStageByContextData(state, context, nodeId) {
+  const map = {
+    plan: (state && state.planNodes) || [],
+    actual: (state && state.actualNodes) || [],
+    branch: (state && state.branchNodes) || [],
+    actualBranch: (state && state.actualBranchNodes) || [],
+  };
+  return (map[context] || []).find(n => n.id === nodeId) || null;
+}
+
+function collectDrsSummaryItemsByLane(state) {
+  const byLane = {};
+  [
+    ['plan', (state && state.planNodes) || []],
+    ['branch', (state && state.branchNodes) || []],
+    ['actual', (state && state.actualNodes) || []],
+    ['actualBranch', (state && state.actualBranchNodes) || []],
+  ].forEach(([rType, nodes]) => {
+    nodes.forEach(node => {
+      const text = String((node && node.drsDetail) || '').trim();
+      if (!node || !node.isDRS || !text) return;
+      const laneKey = getDrsLaneKey(rType, node);
+      if (!laneKey) return;
+      if (!byLane[laneKey]) byLane[laneKey] = [];
+      byLane[laneKey].push({ label: getStageDrsSummaryLabel(state, rType, node), text });
+    });
+  });
+  ((state && state.stageShifts) || []).forEach(shift => {
+    const text = String((shift && shift.drsDetail) || '').trim();
+    if (!text) return;
+    const source = findStageByContextData(state, shift.sourceContext, shift.sourceNodeId);
+    const laneKey = source ? getDrsLaneKey(shift.sourceContext, source) : getPrimarySummaryLaneKey(state);
+    if (!laneKey) return;
+    const mode = shift.mode === 'preponed' ? 'Preponed Shift' : 'Postponed Shift';
+    const label = source
+      ? [mode, getStageDrsSummaryLabel(state, shift.sourceContext, source)].filter(Boolean).join(' / ')
+      : mode;
+    if (!byLane[laneKey]) byLane[laneKey] = [];
+    byLane[laneKey].push({ label, text });
+  });
+  return byLane;
+}
+
+function getTimelineInLaneOverlays(state) {
+  const overlays = [];
+  const primaryLaneKey = getPrimarySummaryLaneKey(state);
+  const remarkItems = splitTimelineSummaryLines((state && state.remarks) || '').map(text => ({ text }));
+  if (primaryLaneKey && remarkItems.length) {
+    overlays.push({ type: 'remarks', title: 'Remarks', laneKey: primaryLaneKey, className: 'canvas-remark remarks-summary-box', items: remarkItems });
+  }
+
+  const drsByLane = collectDrsSummaryItemsByLane(state || {});
+  Object.keys(drsByLane).forEach(laneKey => {
+    if (drsByLane[laneKey].length) overlays.push({ type: 'drs', title: 'DRS Details', laneKey, className: 'drs-summary-box', items: drsByLane[laneKey] });
+  });
+
+  if (primaryLaneKey && state && state.milestoneTableVisible) {
+    const data = getMilestoneTableRows(state);
+    if (data.cols.length && data.rows.length) overlays.push({ type: 'milestone', title: 'Milestone Table', laneKey: primaryLaneKey, className: 'milestone-grid-table', table: data });
+  }
+  return overlays;
+}
+
+function getTimelineLaneOverlayH(state, laneKey) {
+  return getTimelineInLaneOverlays(state).some(overlay => overlay.laneKey === laneKey) ? TIMELINE_INLANE_OVERLAY_H : 0;
+}
+
+function getPlanLaneH(state, lane) {
+  return ROH + getTimelineLaneOverlayH(state, getPlanLaneKey(lane));
+}
+
+function getActualLaneH(state, lane) {
+  return ROH + getTimelineLaneOverlayH(state, getActualLaneKey(lane));
+}
+
+const getPlannedH = (state) => getPlanLanes(state).reduce((sum, lane) => sum + getPlanLaneH(state, lane), 0);
+const getActualH = (state) => getActualLanes(state).reduce((sum, lane) => sum + getActualLaneH(state, lane), 0);
+
+function getPlanLaneGeometry(state, type, id) {
+  let top = getTopOffset(state);
+  const targetContext = type === 'branch' ? 'branch' : 'plan';
+  const targetKey = getTimelineLaneKey(targetContext, id);
+  for (const lane of getPlanLanes(state)) {
+    const key = getPlanLaneKey(lane);
+    const height = getPlanLaneH(state, lane);
+    if (key === targetKey) return { key, top, height, stageY: top + ROH / 2, overlayTop: top + ROH, overlayH: height - ROH };
+    top += height;
+  }
+  return null;
+}
+
+function getActualLaneGeometry(state, type, id) {
+  let top = getTopOffset(state) + getPlannedH(state) + getDividerH(state);
+  const targetContext = type === 'branch' ? 'actualBranch' : 'actual';
+  const targetKey = getTimelineLaneKey(targetContext, id);
+  for (const lane of getActualLanes(state)) {
+    const key = getActualLaneKey(lane);
+    const height = getActualLaneH(state, lane);
+    if (key === targetKey) return { key, top, height, stageY: top + ROH / 2, overlayTop: top + ROH, overlayH: height - ROH };
+    top += height;
+  }
+  return null;
+}
+
 const getGridGroupH = (state) => getTopOffset(state) + getPlannedH(state) + getDividerH(state) + getActualH(state);
 const getSidebarH = (state) => getGridGroupH(state);
 
@@ -848,9 +999,11 @@ function getFutureActualBlankSpaceCol(state, today = new Date()) {
 
 function getFutureActualBlankSpacePoint(state, today = new Date(), yOffset = 18) {
   const col = getFutureActualBlankSpaceCol(state, today);
+  const lane = getActualLanes(state)[0];
+  const geom = lane ? getActualLaneGeometry(state, lane.type === 'actualBranch' ? 'branch' : 'actual', lane.type === 'actualBranch' ? lane.branchId : lane.variantId) : null;
   return {
     x: col * COL + COL / 2,
-    y: getTopOffset(state) + getPlannedH(state) + 4 + ROH / 2 + yOffset,
+    y: (geom ? geom.stageY : getTopOffset(state) + getPlannedH(state) + getDividerH(state) + ROH / 2) + yOffset,
   };
 }
 
@@ -1161,34 +1314,34 @@ function getBranchSourcePoint(branch, state) {
   const sourceNodeId = branch.sourceNodeId || branch.parentNodeId;
   const sourceNode = sourceNodeId ? state.planNodes.find(n => n.id === sourceNodeId) : null;
   if (sourceNode) return getPlanNodeCenter(sourceNode, state);
-  const laneIdx = findPlanLaneIndex(state, 'plan', branch.variantId);
+  const geom = getPlanLaneGeometry(state, 'plan', branch.variantId);
   const col = Number.isFinite(branch.sourceCol) ? branch.sourceCol : dateToCol(branch.sourceDate, state);
-  if (laneIdx < 0 || col < 0) return null;
-  return { x: col * COL + COL / 2, y: getTopOffset(state) + laneIdx * ROH + ROH / 2 };
+  if (!geom || col < 0) return null;
+  return { x: col * COL + COL / 2, y: geom.stageY };
 }
 
 function getActualBranchSourcePoint(branch, state) {
   const sourceNodeId = branch.sourceNodeId || branch.parentNodeId;
   const sourceNode = sourceNodeId ? (state.actualNodes || []).find(n => n.id === sourceNodeId) : null;
   if (sourceNode) return getActualNodeCenter(sourceNode, state);
-  const laneIdx = findActualLaneIndex(state, 'actual', branch.variantId);
+  const geom = getActualLaneGeometry(state, 'actual', branch.variantId);
   const col = Number.isFinite(branch.sourceCol) ? branch.sourceCol : dateToCol(branch.sourceDate, state);
-  if (laneIdx < 0 || col < 0) return null;
-  return { x: col * COL + COL / 2, y: getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2 };
+  if (!geom || col < 0) return null;
+  return { x: col * COL + COL / 2, y: geom.stageY };
 }
 
 function getBranchLaneAnchorPoint(branch, state) {
-  const laneIdx = findPlanLaneIndex(state, 'branch', branch.id);
+  const geom = getPlanLaneGeometry(state, 'branch', branch.id);
   const col = Number.isFinite(branch.sourceCol) ? branch.sourceCol : dateToCol(branch.sourceDate, state);
-  if (laneIdx < 0 || col < 0) return null;
-  return { x: col * COL + COL / 2, y: getTopOffset(state) + laneIdx * ROH + ROH / 2 };
+  if (!geom || col < 0) return null;
+  return { x: col * COL + COL / 2, y: geom.stageY };
 }
 
 function getActualBranchLaneAnchorPoint(branch, state) {
-  const laneIdx = findActualLaneIndex(state, 'branch', branch.id);
+  const geom = getActualLaneGeometry(state, 'branch', branch.id);
   const col = Number.isFinite(branch.sourceCol) ? branch.sourceCol : dateToCol(branch.sourceDate, state);
-  if (laneIdx < 0 || col < 0) return null;
-  return { x: col * COL + COL / 2, y: getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2 };
+  if (!geom || col < 0) return null;
+  return { x: col * COL + COL / 2, y: geom.stageY };
 }
 
 function getMergeTargetPoint(link, state) {
@@ -1198,10 +1351,10 @@ function getMergeTargetPoint(link, state) {
   }
   const branch = state.branches.find(b => b.id === link.fromBranchId);
   if (!branch) return null;
-  const laneIdx = findPlanLaneIndex(state, 'plan', branch.variantId);
+  const geom = getPlanLaneGeometry(state, 'plan', branch.variantId);
   const col = Number.isFinite(link.toCol) ? link.toCol : dateToCol(link.toDate, state);
-  if (laneIdx < 0 || col < 0) return null;
-  return { x: col * COL + COL / 2, y: getTopOffset(state) + laneIdx * ROH + ROH / 2 };
+  if (!geom || col < 0) return null;
+  return { x: col * COL + COL / 2, y: geom.stageY };
 }
 
 function getActualMergeTargetPoint(link, state) {
@@ -1211,10 +1364,10 @@ function getActualMergeTargetPoint(link, state) {
   }
   const branch = (state.actualBranches || []).find(b => b.id === link.fromBranchId);
   if (!branch) return null;
-  const laneIdx = findActualLaneIndex(state, 'actual', branch.variantId);
+  const geom = getActualLaneGeometry(state, 'actual', branch.variantId);
   const col = Number.isFinite(link.toCol) ? link.toCol : dateToCol(link.toDate, state);
-  if (laneIdx < 0 || col < 0) return null;
-  return { x: col * COL + COL / 2, y: getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2 };
+  if (!geom || col < 0) return null;
+  return { x: col * COL + COL / 2, y: geom.stageY };
 }
 
 function findPlanNodeAtCol(state, variantId, col) {
@@ -2172,9 +2325,10 @@ function renderGrid(state) {
   renderEopLane(grp, tc, state);
 
   getPlanLanes(state).forEach(lane => {
+    const geom = getPlanLaneGeometry(state, lane.type === 'branch' ? 'branch' : 'plan', lane.type === 'branch' ? lane.branchId : lane.variantId);
     const sr = lane.type === 'branch'
-      ? makeBranchSubRow(tc, lane.branchId, 'branch', lane.label, state)
-      : makeSubRow(tc, lane.variantId, 'plan', state);
+      ? makeBranchSubRow(tc, lane.branchId, 'branch', lane.label, state, geom)
+      : makeSubRow(tc, lane.variantId, 'plan', state, geom);
     grp.appendChild(sr);
   });
 
@@ -2185,9 +2339,10 @@ function renderGrid(state) {
   grp.appendChild(dv);
 
   getActualLanes(state).forEach((lane, index) => {
+    const geom = getActualLaneGeometry(state, lane.type === 'actualBranch' ? 'branch' : 'actual', lane.type === 'actualBranch' ? lane.branchId : lane.variantId);
     const sr = lane.type === 'actualBranch'
-      ? makeBranchSubRow(tc, lane.branchId, 'actualBranch', lane.label, state)
-      : makeSubRow(tc, lane.variantId, 'actual', state);
+      ? makeBranchSubRow(tc, lane.branchId, 'actualBranch', lane.label, state, geom)
+      : makeSubRow(tc, lane.variantId, 'actual', state, geom);
     if (index === 0) sr.classList.add('actual-first');
     grp.appendChild(sr);
   });
@@ -2195,8 +2350,6 @@ function renderGrid(state) {
   tlGrid.appendChild(grp);
   drawLines(grp, state);
   renderVariantLabels(state);
-  renderCanvasRemarks(state);
-  renderMilestoneTableOverlay(state);
   renderMergeHint(state);
 }
 
@@ -2244,11 +2397,11 @@ function renderEopLane(grp, tc, state) {
   });
 }
 
-function makeSubRow(tc, vId, rType, state) {
+function makeSubRow(tc, vId, rType, state, geom) {
   const sr = document.createElement('div');
   const readOnly = isSnapshotReadOnlyMode();
   sr.className = 'grid-sub-row ' + (rType === 'plan' ? 'plan-sub' : 'actual-sub');
-  sr.style.height = ROH + 'px';
+  sr.style.height = `${(geom && geom.height) || ROH}px`;
   sr.style.position = 'relative';
   for (let col = 0; col < tc; col++) {
     const c = document.createElement('div');
@@ -2262,14 +2415,15 @@ function makeSubRow(tc, vId, rType, state) {
     }
     sr.appendChild(c);
   }
+  renderTimelineInLaneSummaries(sr, state, geom && geom.key);
   return sr;
 }
 
-function makeBranchSubRow(tc, branchId, rType, label, state) {
+function makeBranchSubRow(tc, branchId, rType, label, state, geom) {
   const sr = document.createElement('div');
   const readOnly = isSnapshotReadOnlyMode();
   sr.className = 'grid-sub-row branch-sub' + (rType === 'actualBranch' ? ' actual-branch-sub' : '');
-  sr.style.height = ROH + 'px';
+  sr.style.height = `${(geom && geom.height) || ROH}px`;
   sr.style.position = 'relative';
   for (let col = 0; col < tc; col++) {
     const c = document.createElement('div');
@@ -2313,6 +2467,7 @@ function makeBranchSubRow(tc, branchId, rType, label, state) {
     pill.appendChild(del);
   }
   sr.appendChild(pill);
+  renderTimelineInLaneSummaries(sr, state, geom && geom.key);
   return sr;
 }
 
@@ -2321,10 +2476,10 @@ function drawLines(grp, state) {
   if (!grp || !state.variants.length) return;
 
   state.variants.forEach(vr => {
-    const laneIdx = findPlanLaneIndex(state, 'plan', vr.id);
-    if (laneIdx < 0) return;
+    const geom = getPlanLaneGeometry(state, 'plan', vr.id);
+    if (!geom) return;
     const pn = state.planNodes.filter(n => n.variantId === vr.id).sort((a, b) => a.col - b.col);
-    const y = getTopOffset(state) + laneIdx * ROH + ROH / 2;
+    const y = geom.stageY;
     for (let i = 0; i < pn.length - 1; i++)
       mkLine(grp, getStageVisualX(pn[i], 'plan', state), y, getStageVisualX(pn[i + 1], 'plan', state), y, '#2563eb');
     const lastPlan = pn[pn.length - 1];
@@ -2341,19 +2496,19 @@ function drawLines(grp, state) {
   });
 
   state.branches.forEach(br => {
-    const laneIdx = findPlanLaneIndex(state, 'branch', br.id);
-    if (laneIdx < 0) return;
-    const bY = getTopOffset(state) + laneIdx * ROH + ROH / 2;
+    const geom = getPlanLaneGeometry(state, 'branch', br.id);
+    if (!geom) return;
+    const bY = geom.stageY;
     const bn = state.branchNodes.filter(n => n.branchId === br.id).sort((a, b) => a.col - b.col);
     for (let i = 0; i < bn.length - 1; i++)
       mkLine(grp, getStageVisualX(bn[i], 'branch', state), bY, getStageVisualX(bn[i + 1], 'branch', state), bY, '#00c9b1');
   });
 
   state.variants.forEach(vr => {
-    const laneIdx = findActualLaneIndex(state, 'actual', vr.id);
-    if (laneIdx < 0) return;
+    const geom = getActualLaneGeometry(state, 'actual', vr.id);
+    if (!geom) return;
     const an = state.actualNodes.filter(n => n.variantId === vr.id).sort((a, b) => a.col - b.col);
-    const y = getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2;
+    const y = geom.stageY;
     for (let i = 0; i < an.length - 1; i++)
       mkLine(grp, getStageVisualX(an[i], 'actual', state), y, getStageVisualX(an[i + 1], 'actual', state), y, '#f97316');
     const lastActual = an[an.length - 1];
@@ -2370,9 +2525,9 @@ function drawLines(grp, state) {
   });
 
   (state.actualBranches || []).forEach(br => {
-    const laneIdx = findActualLaneIndex(state, 'branch', br.id);
-    if (laneIdx < 0) return;
-    const y = getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2;
+    const geom = getActualLaneGeometry(state, 'branch', br.id);
+    if (!geom) return;
+    const y = geom.stageY;
     const nodes = state.actualBranchNodes.filter(n => n.branchId === br.id).sort((a, b) => a.col - b.col);
     for (let i = 0; i < nodes.length - 1; i++)
       mkLine(grp, getStageVisualX(nodes[i], 'actualBranch', state), y, getStageVisualX(nodes[i + 1], 'actualBranch', state), y, '#f97316');
@@ -2541,27 +2696,27 @@ function getFirstActualBranchNode(branchId, state) {
 }
 
 function getPlanNodeCenter(node, state) {
-  const laneIdx = findPlanLaneIndex(state, 'plan', node.variantId);
-  if (laneIdx < 0) return null;
-  return { x: getStageVisualX(node, 'plan', state), y: getTopOffset(state) + laneIdx * ROH + ROH / 2 };
+  const geom = getPlanLaneGeometry(state, 'plan', node.variantId);
+  if (!geom) return null;
+  return { x: getStageVisualX(node, 'plan', state), y: geom.stageY };
 }
 
 function getBranchNodeCenter(node, state) {
-  const laneIdx = findPlanLaneIndex(state, 'branch', node.branchId);
-  if (laneIdx < 0) return null;
-  return { x: getStageVisualX(node, 'branch', state), y: getTopOffset(state) + laneIdx * ROH + ROH / 2 };
+  const geom = getPlanLaneGeometry(state, 'branch', node.branchId);
+  if (!geom) return null;
+  return { x: getStageVisualX(node, 'branch', state), y: geom.stageY };
 }
 
 function getActualNodeCenter(node, state) {
-  const laneIdx = findActualLaneIndex(state, 'actual', node.variantId);
-  if (laneIdx < 0) return null;
-  return { x: getStageVisualX(node, 'actual', state), y: getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2 };
+  const geom = getActualLaneGeometry(state, 'actual', node.variantId);
+  if (!geom) return null;
+  return { x: getStageVisualX(node, 'actual', state), y: geom.stageY };
 }
 
 function getActualBranchNodeCenter(node, state) {
-  const laneIdx = findActualLaneIndex(state, 'branch', node.branchId);
-  if (laneIdx < 0) return null;
-  return { x: getStageVisualX(node, 'actualBranch', state), y: getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2 };
+  const geom = getActualLaneGeometry(state, 'branch', node.branchId);
+  if (!geom) return null;
+  return { x: getStageVisualX(node, 'actualBranch', state), y: geom.stageY };
 }
 
 function findStageByContext(state, context, nodeId) {
@@ -2589,15 +2744,15 @@ function getStageShiftTargetCenter(shift, source, state) {
 }
 
 function renderNodes(state) {
-  document.querySelectorAll('.node,.drs-detail-label,.drs-summary-box').forEach(e => e.remove());
+  document.querySelectorAll('.node,.drs-detail-label').forEach(e => e.remove());
   const grp = tlGrid.querySelector('.grid-vr-grp');
   if (!grp) return;
   const shiftedNodeIds = new Set((state.stageShifts || []).map(shift => shift.sourceNodeId));
 
   state.planNodes.forEach(n => {
-    const laneIdx = findPlanLaneIndex(state, 'plan', n.variantId);
-    if (laneIdx < 0) return;
-    const y = getTopOffset(state) + laneIdx * ROH + ROH / 2;
+    const geom = getPlanLaneGeometry(state, 'plan', n.variantId);
+    if (!geom) return;
+    const y = geom.stageY;
     const x = getStageVisualX(n, 'plan', state);
     const el = mkNode(n, 'plan', shiftedNodeIds.has(n.id));
     el.style.cssText = `left:${x - 14}px;top:${y - 14}px`;
@@ -2605,9 +2760,9 @@ function renderNodes(state) {
   });
 
   state.branchNodes.forEach(n => {
-    const laneIdx = findPlanLaneIndex(state, 'branch', n.branchId);
-    if (laneIdx < 0) return;
-    const y = getTopOffset(state) + laneIdx * ROH + ROH / 2;
+    const geom = getPlanLaneGeometry(state, 'branch', n.branchId);
+    if (!geom) return;
+    const y = geom.stageY;
     const x = getStageVisualX(n, 'branch', state);
     const el = mkNode(n, 'branch', shiftedNodeIds.has(n.id));
     el.style.cssText = `left:${x - 14}px;top:${y - 14}px`;
@@ -2615,9 +2770,9 @@ function renderNodes(state) {
   });
 
   state.actualNodes.forEach(n => {
-    const laneIdx = findActualLaneIndex(state, 'actual', n.variantId);
-    if (laneIdx < 0) return;
-    const y = getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2;
+    const geom = getActualLaneGeometry(state, 'actual', n.variantId);
+    if (!geom) return;
+    const y = geom.stageY;
     const x = getStageVisualX(n, 'actual', state);
     const el = mkNode(n, 'actual', shiftedNodeIds.has(n.id));
     el.style.cssText = `left:${x - 14}px;top:${y - 14}px`;
@@ -2625,9 +2780,9 @@ function renderNodes(state) {
   });
 
   state.actualBranchNodes.forEach(n => {
-    const laneIdx = findActualLaneIndex(state, 'branch', n.branchId);
-    if (laneIdx < 0) return;
-    const y = getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2;
+    const geom = getActualLaneGeometry(state, 'branch', n.branchId);
+    if (!geom) return;
+    const y = geom.stageY;
     const x = getStageVisualX(n, 'actualBranch', state);
     const el = mkNode(n, 'actualBranch', shiftedNodeIds.has(n.id));
     el.style.cssText = `left:${x - 14}px;top:${y - 14}px`;
@@ -2635,7 +2790,6 @@ function renderNodes(state) {
   });
 
   renderStageShiftNodes(grp, state);
-  renderDrsSummaryBox(grp, state);
   updateMergeTargetClasses();
 }
 
@@ -2705,10 +2859,10 @@ function renderBottomTables(state) {
   state = state || store.getState();
   const readOnly = isSnapshotReadOnlyMode();
   renderDynTable('msTableWrap', state.leftTable, {
-    updateCell: (ri, ci, v) => { store.getState().updateLeftTableCell(ri, ci, v); renderMilestoneTableOverlay(store.getState()); scheduleDraftSave(); },
-    updateColName: (ci, name) => { store.getState().updateLeftTableColName(ci, name); renderMilestoneTableOverlay(store.getState()); scheduleDraftSave(); },
-    deleteCol: (ci) => { store.getState().deleteLeftTableCol(ci); renderBottomTables(); renderMilestoneTableOverlay(store.getState()); persistDraftNow(); },
-    deleteRow: (ri) => { store.getState().deleteLeftTableRow(ri); renderBottomTables(); renderMilestoneTableOverlay(store.getState()); persistDraftNow(); },
+    updateCell: (ri, ci, v) => { store.getState().updateLeftTableCell(ri, ci, v); renderGrid(store.getState()); renderNodes(store.getState()); scheduleDraftSave(); },
+    updateColName: (ci, name) => { store.getState().updateLeftTableColName(ci, name); renderGrid(store.getState()); renderNodes(store.getState()); scheduleDraftSave(); },
+    deleteCol: (ci) => { store.getState().deleteLeftTableCol(ci); renderBottomTables(); renderGrid(store.getState()); renderNodes(store.getState()); persistDraftNow(); },
+    deleteRow: (ri) => { store.getState().deleteLeftTableRow(ri); renderBottomTables(); renderGrid(store.getState()); renderNodes(store.getState()); persistDraftNow(); },
   }, { readOnly });
   renderDynTable('eopTableWrap', state.rightTable, {
     updateCell: (ri, ci, v) => { store.getState().updateRightTableCell(ri, ci, v); scheduleDraftSave(); },
@@ -2801,15 +2955,19 @@ function renderDynTable(wrapId, tbl, cbs, options = {}) {
 
 function renderVariantLabels(state) {
   tlGrid.querySelectorAll('.vr-float-label').forEach(e => e.remove());
-  getPlanLanes(state).forEach((lane, laneIdx) => {
+  getPlanLanes(state).forEach(lane => {
     if (lane.type !== 'plan') return;
+    const geom = getPlanLaneGeometry(state, 'plan', lane.variantId);
+    if (!geom) return;
     addVariantLabel(`plan:${lane.variantId}`, lane.variantId, lane.label, 50,
-      getTopOffset(state) + laneIdx * ROH + ROH / 2 - 7, 'plan', state);
+      geom.stageY - 7, 'plan', state);
   });
-  getActualLanes(state).forEach((lane, laneIdx) => {
+  getActualLanes(state).forEach(lane => {
     if (lane.type !== 'actual') return;
+    const geom = getActualLaneGeometry(state, 'actual', lane.variantId);
+    if (!geom) return;
     addVariantLabel(`actual:${lane.variantId}`, lane.variantId, lane.label, 50,
-      getTopOffset(state) + getPlannedH(state) + 4 + laneIdx * ROH + ROH / 2 - 7, 'actual', state);
+      geom.stageY - 7, 'actual', state);
   });
 }
 
@@ -2921,44 +3079,10 @@ function makeTimelineSummaryBox(title, items, className) {
   return el;
 }
 
-function renderCanvasRemarks(state) {
-  tlGrid.querySelectorAll('.remarks-summary-box').forEach(e => e.remove());
-  const items = getRemarkSummaryItems(state);
-  if (!items.length) return;
-  const el = makeTimelineSummaryBox('Remarks', items, 'canvas-remark remarks-summary-box');
-  const defaultPos = getFutureActualBlankSpacePoint(state, new Date(), 18);
-  const pos = state.remarkPosition || defaultPos;
-  el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
-  if (!isSnapshotReadOnlyMode()) el.addEventListener('mousedown', startRemarkDrag);
-  tlGrid.appendChild(el);
-}
-
-function renderDrsSummaryBox(grp, state) {
-  grp.querySelectorAll('.drs-summary-box').forEach(e => e.remove());
-  const items = collectDrsSummaryItems(state);
-  if (!items.length) return;
-  const el = makeTimelineSummaryBox('DRS Details', items, 'drs-summary-box');
-  el.dataset.labelKey = 'drs:summary';
-  const futurePoint = getFutureActualBlankSpacePoint(state, new Date(), -22);
-  const defaultPos = { x: Math.max(4, futurePoint.x), y: Math.max(4, futurePoint.y) };
-  const pos = (state.labelPositions || {})['drs:summary'] || defaultPos;
-  el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
-  if (!isSnapshotReadOnlyMode()) el.addEventListener('mousedown', startDrsLabelDrag);
-  grp.appendChild(el);
-}
-
-function renderMilestoneTableOverlay(state) {
-  tlGrid.querySelectorAll('.milestone-grid-table').forEach(e => e.remove());
-  if (!state.milestoneTableVisible) return;
-  const data = getMilestoneTableRows(state);
-  if (!data.cols.length || !data.rows.length) return;
-
+function makeMilestoneGridTable(data) {
   const el = document.createElement('div');
   el.className = 'milestone-grid-table';
   el.dataset.labelKey = 'milestone:table';
-  const defaultPos = getFutureActualBlankSpacePoint(state, new Date(), 44);
-  const pos = state.labelPositions['milestone:table'] || defaultPos;
-  el.style.cssText = `left:${pos.x}px;top:${pos.y}px`;
 
   const title = document.createElement('div');
   title.className = 'milestone-grid-title';
@@ -2988,9 +3112,30 @@ function renderMilestoneTableOverlay(state) {
   });
   table.appendChild(tbody);
   el.appendChild(table);
+  return el;
+}
 
-  if (!isSnapshotReadOnlyMode()) el.addEventListener('mousedown', startMilestoneTableDrag);
-  tlGrid.appendChild(el);
+function renderTimelineInLaneSummaries(rowEl, state, laneKey) {
+  if (!laneKey) return;
+  const overlays = getTimelineInLaneOverlays(state).filter(overlay => overlay.laneKey === laneKey);
+  if (!overlays.length) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'timeline-inlane-overlays';
+  wrap.style.top = `${ROH}px`;
+  wrap.style.height = `${getTimelineLaneOverlayH(state, laneKey)}px`;
+  wrap.style.width = `${totalCols(state) * COL}px`;
+
+  overlays.forEach(overlay => {
+    if (overlay.type === 'milestone') {
+      wrap.appendChild(makeMilestoneGridTable(overlay.table));
+      return;
+    }
+    const el = makeTimelineSummaryBox(overlay.title, overlay.items, overlay.className);
+    if (overlay.type === 'drs') el.dataset.labelKey = `drs:${laneKey}`;
+    wrap.appendChild(el);
+  });
+
+  rowEl.appendChild(wrap);
 }
 
 function renderMergeHint(state) {
@@ -3000,11 +3145,11 @@ function renderMergeHint(state) {
   if (!grp) return;
   const branch = state.branches.find(b => b.id === mergePick.fromBranchId);
   if (!branch) return;
-  const laneIdx = findPlanLaneIndex(state, 'plan', branch.variantId);
-  if (laneIdx < 0) return;
+  const geom = getPlanLaneGeometry(state, 'plan', branch.variantId);
+  if (!geom) return;
   const hint = document.createElement('div');
   hint.className = 'merge-target-hint';
-  hint.style.top = (getTopOffset(state) + laneIdx * ROH + 8) + 'px';
+  hint.style.top = (geom.top + 8) + 'px';
   hint.textContent = 'Select parent stage to merge';
   grp.appendChild(hint);
 }
@@ -3585,8 +3730,8 @@ window.deleteVariant = (id) => {
 };
 
 // ── Bottom table buttons ──
-$('addMsRowBtn').addEventListener('click', () => { if (isSnapshotReadOnlyMode()) return; store.getState().addLeftTableRow(); renderBottomTables(); persistDraftNow(); });
-$('addMsColBtn').addEventListener('click', () => { if (isSnapshotReadOnlyMode()) return; store.getState().addLeftTableCol(); renderBottomTables(); persistDraftNow(); });
+$('addMsRowBtn').addEventListener('click', () => { if (isSnapshotReadOnlyMode()) return; store.getState().addLeftTableRow(); renderBottomTables(); renderGrid(store.getState()); renderNodes(store.getState()); persistDraftNow(); });
+$('addMsColBtn').addEventListener('click', () => { if (isSnapshotReadOnlyMode()) return; store.getState().addLeftTableCol(); renderBottomTables(); renderGrid(store.getState()); renderNodes(store.getState()); persistDraftNow(); });
 $('addEopRowBtn').addEventListener('click', () => { if (isSnapshotReadOnlyMode()) return; store.getState().addRightTableRow(); renderBottomTables(); persistDraftNow(); });
 const addEopColBtn = $('addEopColBtn');
 addEopColBtn.hidden = true;

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project Timeline Main Page</title>
+  <link rel="stylesheet" href="mainpage.css" />
+</head>
+
+<body>
+  <div class="app">
+
+    <!-- STATE PANELS -->
+    <section class="state-panel" id="loadingState">
+      <div class="state-spinner" aria-hidden="true"></div>
+      <span>Loading projects…</span>
+    </section>
+
+    <section class="state-panel" id="emptyState" hidden>
+      <strong>No projects found</strong>
+      <span>Create or submit a project from the edit page, then return here to view it in the shared timeline.</span>
+    </section>
+
+    <section class="state-panel error" id="errorState" hidden>
+      <strong>Could not load projects</strong>
+      <span id="errorText">An unexpected error occurred.</span>
+    </section>
+
+    <!-- CUT-OFF SELECTOR -->
+    <div class="page-toolbar" id="pageToolbar" hidden>
+      <div class="version-wrap">
+        <label for="cutoffSelect">Timeline Version</label>
+        <select id="cutoffSelect" aria-label="Timeline version">
+          <option value="current">Current</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- MAIN GRID -->
+    <div class="main" id="mainGrid" hidden>
+      <!-- SIDEBAR -->
+      <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div class="sh-cell sno">SL.<br>NO.</div>
+          <div class="sh-cell proj">PROJECT</div>
+          <div class="sh-cell loc">LOCATION</div>
+          <div class="sh-cell plant">PLANT</div>
+          <div class="sh-cell pa">P/A</div>
+        </div>
+        <div class="sidebar-rows" id="sbRows"></div>
+      </div>
+
+      <!-- TIMELINE -->
+      <div class="timeline-area" id="timelineArea">
+        <div class="tl-scroll" id="tlScroll">
+          <div class="tl-sticky-top">
+            <div class="year-header" id="yearHeader"></div>
+            <div class="month-header" id="monthHeader"></div>
+          </div>
+          <div class="tl-grid" id="tlGrid"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="demo-data/multi-project-cutoff-demo.js"></script>
+  <script src="mainpage.js"></script>
+</body>
+
+</html>

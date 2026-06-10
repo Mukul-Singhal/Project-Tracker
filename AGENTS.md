@@ -22,7 +22,10 @@ Use this file as the first local orientation point before editing. Always read `
 
 - Prefix shell commands with `rtk`, per the included RTK instructions.
 - Common verification commands:
+  - `rtk node --test tests/mainpage.test.js`
   - `rtk node --test tests/persistence.test.js`
+  - `rtk node --check mainpage.js`
+  - `rtk node --check demo-data/multi-project-cutoff-demo.js`
   - `rtk node --check app.js`
   - `rtk git diff --check`
 - To run locally for browser checks:
@@ -35,9 +38,23 @@ Use this file as the first local orientation point before editing. Always read `
 - `app.js`: complete browser application logic.
 - `style.css`: all layout, theme, timeline, node, modal, table, and export styles.
 - `index.html`: static shell and fixed DOM anchors used by `app.js`.
+- `mainpage.html`, `mainpage.css`, `mainpage.js`: read-only portfolio timeline grid with its own separate runtime files; do not make it depend on `index.html`, `style.css`, or `app.js`.
+- `demo-data/multi-project-cutoff-demo.js`: local development seeder for multiple portfolio projects that share the same cutoff dates and have different timeline months/content.
 - `tests/persistence.test.js`: extracts a slice of `app.js` into a VM and tests pure/domain/persistence behavior plus source-level UI expectations.
+- `tests/mainpage.test.js`: evaluates `mainpage.js` in a VM and tests project normalization, localStorage discovery, portfolio model building, and cutoff snapshot resolution.
 - `README.md`: product and architecture reference.
 - `docs/database/dataverse-schema.md`: Dataverse table/schema notes.
+
+## Main Page Portfolio Timeline
+
+- `mainpage.html` includes only a compact `Timeline Version` toolbar plus the read-only sidebar/timeline grid; the old marketing/header summary UI is intentionally absent.
+- `mainpage.css` mirrors the planner grid tokens (`--row-h: 90px`, `--col-w: 52px`) and SVG stage-logo rendering styles but stays separate from `style.css`.
+- `mainpage.js` reads all local projects by scanning `project-tracker:draft:*`, `baseline:*`, `submit-versions:*`, and `discussion-cutoffs:*` keys.
+- The top cutoff dropdown shows `Current` plus the shared cutoff dates from localStorage. Selecting a cutoff resolves every project independently to the latest submit version with `submittedAt` on or before cutoff end-of-day; projects without a matching submit version are hidden for that view.
+- `Current` renders each project's draft. Historical cutoff views render submit-version `state` objects and do not mutate drafts.
+- When no local projects exist and `window.ProjectTrackerMultiDemo` is available, `mainpage.js` auto-seeds the multi-project demo with `{ reload: false }` so the page shows data immediately.
+- Demo projects are removable with `ProjectTrackerMultiDemo.remove()` and seedable manually with `seedProjectTrackerMultiDemo()` from the browser console.
+- Keep the existing `loadProjectsFromLocalStorage()` and `buildPortfolioModel()` behavior compatible with tests; use richer record helpers (`loadProjectRecordsFromLocalStorage`, `resolveProjectsForCutoff`) for cutoff-aware mainpage behavior.
 
 ## app.js Sections
 
@@ -180,6 +197,7 @@ Use this file as the first local orientation point before editing. Always read `
 For visual changes, use the in-app browser or a local static server and check:
 
 - Page loads without console errors.
+- `mainpage.html` auto-seeds demo data when localStorage is empty, shows multiple projects, and the Timeline Version dropdown switches all projects between `Current` and shared cutoff dates.
 - Timeline Version dropdown shows `Current` and available backend/local cutoff dates.
 - Selecting a historical cutoff renders the saved snapshot without overwriting the current draft.
 - Snapshot mode disables editing controls, stage drag/drop, add/delete, Copy to Actual, Publish Status, and Submit.

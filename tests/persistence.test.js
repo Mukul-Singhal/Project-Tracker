@@ -57,6 +57,13 @@ module.exports = {
   isActualDateInFuture: typeof isActualDateInFuture === 'function' ? isActualDateInFuture : undefined,
   getFutureActualBlankSpaceCol: typeof getFutureActualBlankSpaceCol === 'function' ? getFutureActualBlankSpaceCol : undefined,
   getFutureActualBlankSpacePoint: typeof getFutureActualBlankSpacePoint === 'function' ? getFutureActualBlankSpacePoint : undefined,
+  getTimelineInLaneOverlays: typeof getTimelineInLaneOverlays === 'function' ? getTimelineInLaneOverlays : undefined,
+  getTimelineLaneOverlayH: typeof getTimelineLaneOverlayH === 'function' ? getTimelineLaneOverlayH : undefined,
+  getPlanLaneGeometry: typeof getPlanLaneGeometry === 'function' ? getPlanLaneGeometry : undefined,
+  getActualLaneGeometry: typeof getActualLaneGeometry === 'function' ? getActualLaneGeometry : undefined,
+  getPlannedH: typeof getPlannedH === 'function' ? getPlannedH : undefined,
+  getActualH: typeof getActualH === 'function' ? getActualH : undefined,
+  getGridGroupH: typeof getGridGroupH === 'function' ? getGridGroupH : undefined,
   getStageSlotRatio: typeof getStageSlotRatio === 'function' ? getStageSlotRatio : undefined,
   getStageVisualX: typeof getStageVisualX === 'function' ? getStageVisualX : undefined,
   removeBranchNodeData,
@@ -223,6 +230,39 @@ test('future actual helpers reject future dates and find next-month blank space'
     branches: [],
     actualBranches: [],
   }, today, 18)), { x: 910, y: 157 });
+});
+
+test('timeline in-lane summaries grow owning lane without moving stage band', () => {
+  const base = {
+    years: [2024],
+    variants: [{ id: 'v1', name: 'Main' }],
+    branches: [],
+    actualBranches: [],
+    planNodes: [],
+    actualNodes: [],
+    branchNodes: [],
+    actualBranchNodes: [],
+    stageShifts: [],
+    leftTable: { cols: ['Milestone'], rows: [['DA']] },
+    milestoneTableVisible: false,
+    remarks: '',
+    eopDate: '',
+    eopItems: [],
+  };
+  const withOverlay = { ...base, remarks: 'Keep this visible inside the grid.' };
+
+  assert.equal(persistence.getGridGroupH(base), 184);
+  assert.equal(persistence.getTimelineInLaneOverlays(base).length, 0);
+  assert.equal(persistence.getTimelineLaneOverlayH(withOverlay, 'plan:v1'), 190);
+  assert.equal(persistence.getPlannedH(withOverlay), 280);
+  assert.equal(persistence.getActualH(withOverlay), 90);
+  assert.equal(persistence.getGridGroupH(withOverlay), 374);
+
+  const basePlan = persistence.getPlanLaneGeometry(base, 'plan', 'v1');
+  const overlayPlan = persistence.getPlanLaneGeometry(withOverlay, 'plan', 'v1');
+  assert.equal(basePlan.stageY, 45);
+  assert.equal(overlayPlan.stageY, 45);
+  assert.equal(overlayPlan.height, 280);
 });
 
 test('stage visual x helper maps bottom labels and spreads duplicate stages', () => {
@@ -1014,17 +1054,19 @@ test('timeline rendering uses visual stage x positions and source-anchored branc
   assert.match(style, /\.sr-cell\.proj\s*\{[^}]*align-items:\s*center[^}]*justify-content:\s*center[^}]*text-align:\s*center/s);
 });
 
-test('future actual blank-space defaults are used for labels and table overlays', () => {
+test('timeline in-lane summaries replace floating label and table overlay positions', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 
-  assert.match(source, /function getFutureActualBlankSpacePoint/);
-  assert.match(source, /s = ensureFutureActualBlankSpaceVisible\(s\)/);
-  assert.match(source, /const futurePoint = getFutureActualBlankSpacePoint\(state, new Date\(\), -22\)/);
-  assert.match(source, /const defaultPos = getFutureActualBlankSpacePoint\(state, new Date\(\), 18\)/);
-  assert.match(source, /const defaultPos = getFutureActualBlankSpacePoint\(state, new Date\(\), 44\)/);
-  assert.match(source, /\(state\.labelPositions \|\| \{\}\)\['drs:summary'\] \|\| defaultPos/);
-  assert.match(source, /state\.remarkPosition \|\| defaultPos/);
-  assert.match(source, /state\.labelPositions\['milestone:table'\] \|\| defaultPos/);
+  assert.match(source, /function getTimelineInLaneOverlays/);
+  assert.match(source, /function getPlanLaneGeometry/);
+  assert.match(source, /function getActualLaneGeometry/);
+  assert.match(source, /function renderTimelineInLaneSummaries/);
+  assert.match(source, /className = 'timeline-inlane-overlays'/);
+  assert.match(source, /renderTimelineInLaneSummaries\(sr, state, geom && geom\.key\)/);
+  assert.doesNotMatch(source, /timeline-overlay-zone/);
+  assert.doesNotMatch(source, /renderCanvasRemarks\(state\)/);
+  assert.doesNotMatch(source, /renderMilestoneTableOverlay\(state\)/);
+  assert.doesNotMatch(source, /renderDrsSummaryBox\(grp, state\)/);
 });
 
 test('merge back connector is a plain orthogonal line without an arrow marker', () => {
@@ -1166,7 +1208,7 @@ test('stage shift modal requires DRS detail and shifted DRS details feed the sum
 test('timeline summary boxes wrap full text instead of truncating it', () => {
   const style = fs.readFileSync(path.join(__dirname, '..', 'style.css'), 'utf8');
   const summaryStart = style.indexOf('.timeline-summary-box');
-  const summaryEnd = style.indexOf('/* ── MILESTONE TABLE OVERLAY');
+  const summaryEnd = style.indexOf('/* ── MILESTONE TABLE IN-LANE ITEM');
   const drsStart = style.indexOf('.drs-summary-box');
 
   assert.notEqual(summaryStart, -1);
@@ -1188,10 +1230,9 @@ test('remarks and DRS details render as cumulative numbered summary boxes', () =
   assert.match(source, /function getRemarkSummaryItems/);
   assert.match(source, /function collectDrsSummaryItems/);
   assert.match(source, /function makeTimelineSummaryBox/);
-  assert.match(source, /makeTimelineSummaryBox\('Remarks'/);
-  assert.match(source, /makeTimelineSummaryBox\('DRS Details'/);
-  assert.match(source, /\(state\.labelPositions \|\| \{\}\)\['drs:summary'\]/);
-  assert.match(source, /renderDrsSummaryBox\(grp, state\)/);
+  assert.match(source, /makeTimelineSummaryBox\(overlay\.title, overlay\.items, overlay\.className\)/);
+  assert.match(source, /function renderTimelineInLaneSummaries/);
+  assert.match(source, /className = 'timeline-inlane-overlays'/);
   assert.doesNotMatch(source, /addDrsDetailLabel\(grp/);
   assert.doesNotMatch(source, /addShiftDrsDetailLabel\(grp/);
 });

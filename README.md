@@ -164,6 +164,13 @@ The timeline highlights a discussion-period window across the month header and e
 
 The header includes a **Timeline Version** dropdown. `Current` is the editable draft/latest view. Backend cutoff dates, such as `20 Jun 2024`, resolve to the latest successful Submit whose `submittedAt` is on or before that cutoff date at end-of-day. Historical selections render from a separate snapshot state and are read-only: editing, drag/drop, add/delete, Copy to Actual, Publish Status, and Submit are disabled until the user returns to `Current`. Export/PDF and theme controls remain available.
 
+### Portfolio Main Page and Cutoff Snapshots
+`mainpage.html` is a separate read-only portfolio timeline that keeps its own `mainpage.css` and `mainpage.js` files. It scans localStorage for every `project-tracker:draft:*`, `baseline:*`, `submit-versions:*`, and `discussion-cutoffs:*` record, then renders multiple projects in one shared sidebar/timeline grid.
+
+The top **Timeline Version** dropdown shows `Current` plus the shared cutoff dates stored with the projects. `Current` renders each project's draft. Selecting a cutoff date resolves every project independently to the latest submit-version whose `submittedAt` is on or before that cutoff at end-of-day, then renders that immutable `state` without mutating any draft. A project with no matching submitted snapshot for the selected cutoff is hidden from that historical view.
+
+For local development, `mainpage.html` includes `demo-data/multi-project-cutoff-demo.js`. If no local projects exist, the main page automatically seeds multiple demo projects with the same cutoff dates and different milestone months/content so the portfolio grid displays immediately. You can also run `seedProjectTrackerMultiDemo()` from the browser console to seed manually, or `ProjectTrackerMultiDemo.remove()` to remove only those demo projects.
+
 ### Copy to Actual
 The `Copy to Actual` header button syncs Plan stages into Actual stages and copies Plan branches into independent Actual branches. Existing copied Actual stages/branches are overwritten from their source Plan data, missing copied items are created, stale copied branches are removed, and manual Actual stages/branches without source ids are preserved.
 
@@ -197,8 +204,14 @@ Project-Tracker/
   app.js                         — Complete browser application logic (§1–§7)
   index.html                     — HTML shell + CDN scripts
   style.css                      — All styles (CSS custom properties, light/dark theme)
+  mainpage.html                  — Read-only portfolio timeline shell
+  mainpage.css                   — Portfolio timeline styles, separate from style.css
+  mainpage.js                    — Portfolio loading, cutoff resolution, and rendering
+  demo-data/
+    multi-project-cutoff-demo.js — Local shared-cutoff portfolio demo seeder
   tests/
     persistence.test.js          — Reads app.js and tests persistence/Dataverse behavior
+    mainpage.test.js             — Tests portfolio normalization/model/cutoff helpers
   docs/
     database/
       dataverse-schema.md        — Dataverse table schema reference

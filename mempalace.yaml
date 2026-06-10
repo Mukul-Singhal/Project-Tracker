@@ -1,5 +1,35 @@
 wing: project_tracker
 rooms:
+- name: testing
+  description: Files from tests/
+  keywords:
+  - testing
+  - tests
+- name: documentation
+  description: Files from docs/
+  keywords:
+  - documentation
+  - docs
+- name: demo_data
+  description: Files from demo-data/
+  keywords:
+  - demo_data
+  - demo-data
+- name: openspec
+  description: Files from openspec/
+  keywords:
+  - openspec
+  - openspec
+- name: backend
+  description: Files from database/
+  keywords:
+  - backend
+  - database
+- name: planning
+  description: Files from specs/
+  keywords:
+  - planning
+  - specs
 - name: general
-  description: All project files
+  description: Files that don't fit other rooms
   keywords: []
